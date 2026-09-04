@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
+import { schedulePush } from '../cloud';
 
 interface Props {
   book: Book;
@@ -27,6 +28,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, status } : l);
     saveLeads(updated);
+    schedulePush();
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
@@ -34,6 +36,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, paid: true } : l);
     saveLeads(updated);
+    schedulePush();
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true });
   };
 
@@ -41,6 +44,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (confirm('Delete this lead?')) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
+      schedulePush();
       setSelectedLead(null);
     }
   };
@@ -51,22 +55,47 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000); }, 400);
   };
 
-  const handleBookCover = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverMsg, setCoverMsg] = useState<string | null>(null);
+  const [pdfMsg, setPdfMsg] = useState<string | null>(null);
+
+  const handleBookCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = ev => setEditBook(prev => ({ ...prev, coverImage: ev.target?.result as string }));
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setCoverBusy(true);
+    setCoverMsg(null);
+    try {
+      const { compressImageFile, approxDataUrlKB } = await import('../storage');
+      const compressed = await compressImageFile(file, 900, 0.82);
+      const kb = approxDataUrlKB(compressed);
+      setEditBook(prev => ({ ...prev, coverImage: compressed }));
+      setCoverMsg(`Cover optimized to ~${kb}KB — fits sync and loads fast everywhere.`);
+    } catch {
+      setCoverMsg('Could not process that image. Try a JPG or PNG file.');
     }
+    setCoverBusy(false);
+    e.target.value = '';
   };
 
-  const handlePdf = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = ev => setEditBook(prev => ({ ...prev, customPdf: ev.target?.result as string }));
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setPdfMsg(null);
+    const sizeMB = file.size / 1024 / 1024;
+    if (sizeMB > 2.5) {
+      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB — too big to sync across browsers. Host it on Google Drive instead and paste the share link below.`);
+      e.target.value = '';
+      return;
     }
+    try {
+      const { fileToDataUrl } = await import('../storage');
+      const dataUrl = await fileToDataUrl(file);
+      setEditBook(prev => ({ ...prev, customPdf: dataUrl }));
+      setPdfMsg(`PDF attached (${sizeMB.toFixed(1)}MB). It will sync to other browsers.`);
+    } catch {
+      setPdfMsg('Could not read that PDF file.');
+    }
+    e.target.value = '';
   };
 
   const exportCsv = () => {
@@ -374,27 +403,51 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
 
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-5">
                 <label className="text-[10px] uppercase tracking-wider text-amber-400 block mb-3">📚 Book Cover Image</label>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   {editBook.coverImage && <img src={editBook.coverImage} alt="Cover" className="w-20 h-28 object-cover rounded border border-slate-700" />}
                   <label className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-xs cursor-pointer transition">
-                    Upload Cover
+                    {coverBusy ? 'Optimizing…' : 'Upload Cover'}
                     <input type="file" accept="image/*" onChange={handleBookCover} className="hidden" />
                   </label>
                   {editBook.coverImage && <button onClick={() => setEditBook(prev => ({ ...prev, coverImage: undefined }))} className="text-red-400 text-xs hover:underline">Remove</button>}
+                </div>
+                {coverMsg && <p className="text-[11px] text-emerald-400 mt-2">{coverMsg}</p>}
+                <div className="mt-3">
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste an image link (recommended for all browsers)</label>
+                  <input
+                    type="url"
+                    placeholder="https://…/cover.jpg"
+                    value={editBook.coverImage && /^https?:\/\//i.test(editBook.coverImage) ? editBook.coverImage : ''}
+                    onChange={e => setEditBook(prev => ({ ...prev, coverImage: e.target.value.trim() || undefined }))}
+                    className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Uploads are auto-compressed. Links (Imgur, Cloudinary, your site) work instantly on every browser with zero storage used.</p>
                 </div>
               </div>
 
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-5">
                 <label className="text-[10px] uppercase tracking-wider text-amber-400 block mb-3">📄 Book PDF File</label>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <label className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-xs cursor-pointer transition">
                     Upload PDF
                     <input type="file" accept=".pdf" onChange={handlePdf} className="hidden" />
                   </label>
-                  {editBook.customPdf && <span className="text-xs text-emerald-400">✓ PDF uploaded</span>}
+                  {editBook.customPdf && !/^https?:\/\//i.test(editBook.customPdf) && <span className="text-xs text-emerald-400">✓ PDF file attached</span>}
                   {editBook.customPdf && <button onClick={() => setEditBook(prev => ({ ...prev, customPdf: undefined }))} className="text-red-400 text-xs hover:underline">Remove</button>}
                 </div>
-                {book.type === 'free' && <p className="text-[10px] text-slate-500 mt-2">Visitors download this file immediately on form submission.</p>}
+                {pdfMsg && <p className="text-[11px] text-amber-400 mt-2">{pdfMsg}</p>}
+                <div className="mt-3">
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste a PDF link (best for big books)</label>
+                  <input
+                    type="url"
+                    placeholder="https://drive.google.com/… or https://yoursite.com/book.pdf"
+                    value={editBook.customPdf && /^https?:\/\//i.test(editBook.customPdf) ? editBook.customPdf : ''}
+                    onChange={e => setEditBook(prev => ({ ...prev, customPdf: e.target.value.trim() || undefined }))}
+                    className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Files under 2.5MB sync across browsers. Bigger books: upload to Google Drive → Share → “Anyone with the link” → paste the link here.</p>
+                </div>
+                {book.type === 'free' && <p className="text-[10px] text-slate-500 mt-2">Visitors download/open this file immediately on form submission.</p>}
                 {book.type === 'paid' && <p className="text-[10px] text-slate-500 mt-2">You manually send this to leads after payment confirmation.</p>}
               </div>
 

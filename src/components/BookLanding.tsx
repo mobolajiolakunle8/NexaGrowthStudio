@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
+import { schedulePush } from '../cloud';
 import BookCover from './BookCover';
 
 const isValidName = (v: string) => v.trim().length >= 2;
@@ -101,6 +102,7 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     };
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
+    schedulePush();
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName(''); setEmail(''); setPhone('');

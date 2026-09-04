@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Book } from './types';
 import { MEGA_ADMIN_PASSCODE_KEY, MEGA_ADMIN_DEFAULT } from './types';
 import { loadBooks, saveBooks } from './storage';
+import { getEffectiveDbUrl, isSyncEnabled, pullFromCloud, schedulePush, getLastSync } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
@@ -65,7 +66,72 @@ export default function App() {
   const [megaPasscodeOpen, setMegaPasscodeOpen] = useState(false);
   const [megaCode, setMegaCode] = useState('');
   const [megaErr, setMegaErr] = useState('');
-  const [megaPasscode] = useState(() => localStorage.getItem(MEGA_ADMIN_PASSCODE_KEY) || MEGA_ADMIN_DEFAULT);
+  const [megaPasscode, setMegaPasscode] = useState(() => {
+    try { return localStorage.getItem(MEGA_ADMIN_PASSCODE_KEY) || MEGA_ADMIN_DEFAULT; }
+    catch { return MEGA_ADMIN_DEFAULT; }
+  });
+  const [cloudState, setCloudState] = useState<{ syncing: boolean; error: string | null; lastSync: string | null }>({
+    syncing: false, error: null, lastSync: getLastSync(),
+  });
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Initial cloud pull: if sync is configured, cloud wins over seed ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const url = getEffectiveDbUrl();
+        if (!url || !isSyncEnabled()) return;
+        setCloudState(s => ({ ...s, syncing: true, error: null }));
+        const cloud = await pullFromCloud(url);
+        if (cloud && (cloud.books.length > 0 || cloud.leads.length > 0)) {
+          if (cloud.books.length > 0) {
+            setBooks(cloud.books);
+            saveBooks(cloud.books);
+          }
+          if (cloud.leads.length > 0) {
+            try {
+              const { LEADS_STORAGE_KEY } = await import('./types');
+              localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(cloud.leads));
+            } catch { /* */ }
+          }
+          try {
+            const { CLOUD_LAST_SYNC_KEY } = await import('./types');
+            localStorage.setItem(CLOUD_LAST_SYNC_KEY, new Date().toISOString());
+          } catch { /* */ }
+          setCloudState({ syncing: false, error: null, lastSync: new Date().toISOString() });
+        } else {
+          setCloudState(s => ({ ...s, syncing: false }));
+        }
+      } catch (e) {
+        setCloudState(s => ({ ...s, syncing: false, error: e instanceof Error ? e.message : 'Cloud sync failed' }));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Poll cloud every 45s so edits from another browser appear ──
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const url = getEffectiveDbUrl();
+        if (!url || !isSyncEnabled()) return;
+        const cloud = await pullFromCloud(url);
+        if (cloud && cloud.books.length > 0) {
+          setBooks(prev => {
+            const a = JSON.stringify(prev);
+            const b = JSON.stringify(cloud.books);
+            if (a !== b) {
+              saveBooks(cloud.books);
+              return cloud.books;
+            }
+            return prev;
+          });
+        }
+      } catch { /* silent poll */ }
+    }, 45000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Hash-based routing
   useEffect(() => {
@@ -107,6 +173,13 @@ export default function App() {
   const handleBooksChange = (updated: Book[]) => {
     setBooks(updated);
     saveBooks(updated);
+    // Push to cloud (debounced) so other browsers receive the change
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => { schedulePush(500); }, 300);
+  };
+
+  const handleMegaPasscodeChanged = (next: string) => {
+    setMegaPasscode(next);
   };
 
   const handleUpdateBook = (updated: Book) => {
@@ -138,6 +211,8 @@ export default function App() {
           onViewLanding={book => {
             window.location.hash = `/book/${book.slug}`;
           }}
+          megaPasscode={megaPasscode}
+          onMegaPasscodeChanged={handleMegaPasscodeChanged}
         />
       );
     }
@@ -231,6 +306,9 @@ export default function App() {
         <footer className="text-center pb-8 pt-6 border-t border-[rgba(21,36,71,0.08)] px-6">
           <div className="font-[Space_Grotesk] font-semibold text-[14px]">Olakunle Samuel</div>
           <div className="font-[JetBrains_Mono] text-[10px] tracking-[0.6px] text-[#6B6860] uppercase mt-[3px]">Nexa Growth Studio — Ibadan, Nigeria</div>
+          <div className="font-[JetBrains_Mono] text-[9px] tracking-wider text-slate-400 mt-2">
+            {cloudState.syncing ? '☁️ Syncing…' : cloudState.error ? `☁️ Sync off (${cloudState.error.slice(0, 60)})` : cloudState.lastSync ? `☁️ Synced ${new Date(cloudState.lastSync).toLocaleString()}` : '📱 Showing this device only — enable Cloud Sync in Settings'}
+          </div>
         </footer>
       </div>
     );
