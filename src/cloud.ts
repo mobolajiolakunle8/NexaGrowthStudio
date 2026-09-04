@@ -17,7 +17,7 @@ import {
 
    Example: 'https://nexa-books-default-rtdb.firebaseio.com'
 ────────────────────────────────────────────────────────────── */
-export const DEFAULT_CLOUD_DB_URL = '';
+export const DEFAULT_CLOUD_DB_URL = 'https://nexa-growth-studio-default-rtdb.firebaseio.com';
 
 export function getEffectiveDbUrl(): string {
   try {
