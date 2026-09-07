@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
-import { deleteLeadInCloud, getPrivatePdfUrl, updateLeadInCloud, uploadBookAsset } from '../cloud';
+import { schedulePush } from '../cloud';
 
 interface Props {
   book: Book;
@@ -18,13 +18,6 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    if (book.type !== 'paid') return;
-    void getPrivatePdfUrl(book.id).then(url => {
-      if (url) setEditBook(current => ({ ...current, customPdf: url }));
-    });
-  }, [book.id, book.type]);
-
   const filteredLeads = leads.filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase()) ||
     l.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -35,7 +28,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, status } : l);
     saveLeads(updated);
-    void updateLeadInCloud(id, { status });
+    schedulePush();
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
@@ -43,7 +36,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, paid: true } : l);
     saveLeads(updated);
-    void updateLeadInCloud(id, { paid: true });
+    schedulePush();
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true });
   };
 
@@ -51,7 +44,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (confirm('Delete this lead?')) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
-      void deleteLeadInCloud(id);
+      schedulePush();
       setSelectedLead(null);
     }
   };
@@ -75,10 +68,8 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
       const { compressImageFile, approxDataUrlKB } = await import('../storage');
       const compressed = await compressImageFile(file, 900, 0.82);
       const kb = approxDataUrlKB(compressed);
-      const blob = await fetch(compressed).then(response => response.blob());
-      const url = await uploadBookAsset(book.id, 'cover', blob, file.name);
-      setEditBook(prev => ({ ...prev, coverImage: url }));
-      setCoverMsg(`Cover optimized to ~${kb}KB and uploaded to Firebase Storage.`);
+      setEditBook(prev => ({ ...prev, coverImage: compressed }));
+      setCoverMsg(`Cover optimized to ~${kb}KB — fits sync and loads fast everywhere.`);
     } catch {
       setCoverMsg('Could not process that image. Try a JPG or PNG file.');
     }
@@ -91,15 +82,16 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (!file) return;
     setPdfMsg(null);
     const sizeMB = file.size / 1024 / 1024;
-    if (sizeMB > 25) {
-      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB. Please use a PDF under 25MB.`);
+    if (sizeMB > 2.5) {
+      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB — too big to sync across browsers. Host it on Google Drive instead and paste the share link below.`);
       e.target.value = '';
       return;
     }
     try {
-      const url = await uploadBookAsset(book.id, 'pdf', file, file.name, book.type === 'free');
-      setEditBook(prev => ({ ...prev, customPdf: url }));
-      setPdfMsg(`PDF uploaded to Firebase Storage (${sizeMB.toFixed(1)}MB).`);
+      const { fileToDataUrl } = await import('../storage');
+      const dataUrl = await fileToDataUrl(file);
+      setEditBook(prev => ({ ...prev, customPdf: dataUrl }));
+      setPdfMsg(`PDF attached (${sizeMB.toFixed(1)}MB). It will sync to other browsers.`);
     } catch {
       setPdfMsg('Could not read that PDF file.');
     }
@@ -258,7 +250,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                   )}
 
                   {book.type === 'free' && (
-                    <button onClick={() => downloadGuidePdf(selectedLead.name, editBook)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium py-2.5 rounded-lg border border-slate-700 transition">📄 Send PDF Manually</button>
+                    <button onClick={() => downloadGuidePdf(selectedLead.name, book)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium py-2.5 rounded-lg border border-slate-700 transition">📄 Send PDF Manually</button>
                   )}
 
                   <a
@@ -299,6 +291,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                 { label: 'CTA Title', key: 'ctaTitle', type: 'input' },
                 { label: 'CTA Subtitle', key: 'ctaSubtitle', type: 'textarea' },
                 { label: 'Admin WhatsApp', key: 'adminWhatsapp', type: 'input' },
+                { label: 'Admin Passcode', key: 'adminPasscode', type: 'input' },
               ].map(({ label, key, type }) => (
                 <div key={key}>
                   <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">{label}</label>

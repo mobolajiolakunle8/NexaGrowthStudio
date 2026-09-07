@@ -1,25 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import type { User } from 'firebase/auth';
-import type { Book } from './types';
-import { LEADS_STORAGE_KEY } from './types';
+import { useEffect, useState } from 'react';
+import type { Book, Lead } from './types';
+import { MEGA_ADMIN_PASSCODE_KEY, MEGA_ADMIN_DEFAULT } from './types';
 import { loadBooks, saveBooks } from './storage';
-import {
-  changeAdminPassword,
-  fetchFromCloud,
-  saveBooksToCloud,
-  signInAdmin,
-  signOutAdmin,
-  startLeadSync,
-  startLiveSync,
-  subscribeToAdmin,
-  testConnection,
-} from './cloud';
+import { pushLocalToCloud, startLiveSync, stopLiveSync, testConnection } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
 import BookCover from './components/BookCover';
 
-function parseHash(): { bookSlug?: string; megaAdmin?: boolean; bookAdmin?: string } {
+// ─── Hash parsing ──────────────────────────────────────────────
+function parseHash(): {
+  bookSlug?: string;
+  megaAdmin?: boolean;
+  bookAdmin?: string;
+} {
   const raw = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
   if (raw === 'admin' || raw === 'admin/login') return { megaAdmin: true };
   if (raw.startsWith('admin/book/')) return { bookAdmin: raw.replace('admin/book/', '') };
@@ -27,119 +21,134 @@ function parseHash(): { bookSlug?: string; megaAdmin?: boolean; bookAdmin?: stri
   return {};
 }
 
+// ─── Seed book ──────────────────────────────────────────────────
+const SEED_BOOK: Book = {
+  id: 'seed_sbsp_001',
+  slug: 'small-business-sales-playbook',
+  title: 'The Small Business Sales Playbook',
+  subtitle: 'A practical, no-fluff guide to closing more sales and growing your business — written for Nigerian small business owners.',
+  author: 'Olakunle Samuel',
+  authorRole: 'Nexa Growth Studio — Ibadan, Nigeria',
+  kicker: 'Free Guide · No Strings Attached',
+  type: 'free',
+  whatsInside: [
+    'A simple framework for understanding your ideal customer and speaking directly to their needs.',
+    'Proven sales conversation scripts tailored for Nigerian market dynamics — no generic templates.',
+    'How to close deals confidently without being pushy — practical guidance for everyday business.',
+  ],
+  ctaTitle: 'Get your free copy',
+  ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
+  adminWhatsapp: '+2349030192034',
+  adminPasscode: 'admin123',
+  published: true,
+  createdAt: new Date().toISOString(),
+  donation: {
+    accountName: 'Olakunle Samuel',
+    accountNumber: '0123456789',
+    bankName: 'GTBank',
+    thankYouMessage: "Thank you for downloading The Small Business Sales Playbook! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
+    donationMessage: 'Support our work — donate any amount you wish.',
+  },
+};
+
+// ─── Types ──────────────────────────────────────────────────────
+type ViewMode =
+  | { type: 'landing'; book: Book }
+  | { type: 'book-admin'; book: Book }
+  | { type: 'mega-admin' }
+  | { type: 'none' };
+
 // ─── App ──────────────────────────────────────────────────────────
 export default function App() {
-  // Books state (hydrated from local storage or first-run seed)
   const [books, setBooks] = useState<Book[]>(() => {
-    const stored = loadBooks();
-    if (stored.length === 0) {
-      saveBooks([SEED_BOOK]);
-      return [SEED_BOOK];
+    try {
+      const stored = loadBooks();
+      if (stored && stored.length > 0) {
+        return stored;
+      }
+    } catch (e) {
+      console.warn('Could not read local books, falling back to seed book', e);
     }
-    return stored;
+    saveBooks([SEED_BOOK]);
+    return [SEED_BOOK];
   });
 
-  // View state
   const [view, setView] = useState<ViewMode>({ type: 'none' });
-  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [megaPasscodeOpen, setMegaPasscodeOpen] = useState(false);
+  const [megaCode, setMegaCode] = useState('');
   const [megaErr, setMegaErr] = useState('');
-  const [adminUser, setAdminUser] = useState<User | null>(null);
-  const [pendingAdminBook, setPendingAdminBook] = useState<string | null>(null);
+  const [megaPasscode, setMegaPasscode] = useState<string>(() => {
+    try {
+      return localStorage.getItem(MEGA_ADMIN_PASSCODE_KEY) ?? MEGA_ADMIN_DEFAULT;
+    } catch {
+      return MEGA_ADMIN_DEFAULT;
+    }
+  });
 
-  // Firebase sync state
-  const liveUnsubRef = useRef<(() => void) | null>(null);
-  const leadUnsubRef = useRef<(() => void) | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [lastSyncStr, setLastSyncStr] = useState<string | null>(null);
-  const [, setLeadRevision] = useState(0);
 
-  // Public visitors receive published book changes in real time.
+  // ── Live sync across all browsers ──
   useEffect(() => {
-    liveUnsubRef.current = startLiveSync((cloudBooks) => {
-      if (!cloudBooks.length) return;
-      setBooks(cloudBooks);
-      saveBooks(cloudBooks);
-      setLastSyncStr(new Date().toISOString());
-    });
+    let unsubscribe: (() => void) | null = null;
+    try {
+      unsubscribe = startLiveSync((fbooks: Book[], _fleads: Lead[]) => {
+        if (Array.isArray(fbooks) && fbooks.length > 0) {
+          setBooks(fbooks);
+          saveBooks(fbooks);
+          setIsOnline(true);
+          setLastSyncStr(new Date().toISOString());
+        }
+      });
+    } catch (err) {
+      console.warn('Realtime live sync error fallback:', err);
+    }
+
     testConnection().then(r => {
       setIsOnline(r.ok);
       if (r.ok) setLastSyncStr(new Date().toISOString());
     }).catch(() => setIsOnline(false));
+
     return () => {
-      liveUnsubRef.current?.();
-      liveUnsubRef.current = null;
+      if (unsubscribe) unsubscribe();
+      stopLiveSync();
     };
   }, []);
 
-  useEffect(() => subscribeToAdmin(async user => {
-    setAdminUser(user);
-    leadUnsubRef.current?.();
-    leadUnsubRef.current = null;
-    if (!user) return;
-    const cloud = await fetchFromCloud().catch(() => null);
-    if (cloud) {
-      if (cloud.books.length) {
-        setBooks(cloud.books);
-        saveBooks(cloud.books);
-      }
-      localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(cloud.leads));
-      setLeadRevision(value => value + 1);
-    }
-    leadUnsubRef.current = startLeadSync(leads => {
-      localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(leads));
-      setLeadRevision(value => value + 1);
-    });
-  }), []);
-
-  // ── Hash-based routing ──
+  // ── Hash routing ──
   useEffect(() => {
     const handleHash = () => {
       const parsed = parseHash();
-
       if (parsed.megaAdmin) {
-        if (adminUser) setView({ type: 'mega-admin' });
-        else {
-          setPendingAdminBook(null);
-          setAdminLoginOpen(true);
-        }
+        setMegaPasscodeOpen(true);
         return;
       }
-
       if (parsed.bookAdmin) {
         const book = books.find(b => b.slug === parsed.bookAdmin);
-        if (book && adminUser) setView({ type: 'book-admin', book });
-        else if (book) {
-          setPendingAdminBook(book.slug);
-          setAdminLoginOpen(true);
+        if (book) {
+          setView({ type: 'book-admin', book });
+          return;
         }
-        return;
       }
-
       if (parsed.bookSlug) {
-        const book = books.find(b => b.slug === parsed.bookSlug && b.published);
-        if (book) setView({ type: 'landing', book });
-        else setView({ type: 'none' });
-        return;
+        const book = books.find(b => b.slug === parsed.bookSlug);
+        if (book) {
+          setView({ type: 'landing', book });
+          return;
+        }
       }
-
       setView({ type: 'none' });
     };
 
     handleHash();
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
-  }, [books, adminUser]);
+  }, [books]);
 
-  // ── Book CRUD ──
   const handleBooksChange = (updated: Book[]) => {
     setBooks(updated);
     saveBooks(updated);
-    saveBooksToCloud(updated).catch(error => {
-      console.error(error);
-      alert('The change was saved locally, but Firebase rejected the cloud update. Confirm you are signed in and deploy the database rules.');
-    });
+    pushLocalToCloud().catch(() => {});
   };
 
   const handleUpdateBook = (updated: Book) => {
@@ -147,22 +156,22 @@ export default function App() {
     handleBooksChange(newBooks);
     setView({ type: 'book-admin', book: updated });
   };
-  const handleAdminLogin = async (e: React.FormEvent) => {
+
+  const handleMegaLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setMegaErr('');
-    try {
-      await signInAdmin(adminEmail, adminPassword);
-      const book = pendingAdminBook ? books.find(item => item.slug === pendingAdminBook) : null;
-      setView(book ? { type: 'book-admin', book } : { type: 'mega-admin' });
-      setAdminLoginOpen(false);
-      setAdminPassword('');
+    if (megaCode === megaPasscode) {
+      setView({ type: 'mega-admin' });
+      setMegaPasscodeOpen(false);
+      setMegaCode('');
       setMegaErr('');
-    } catch (error) {
-      setMegaErr(error instanceof Error ? error.message.replace('Firebase: ', '') : 'Sign-in failed.');
+    } else {
+      setMegaErr('Incorrect passcode.');
     }
   };
 
-  // ── Render main ──
+  const handleMegaPasscodeChanged = (next: string) => setMegaPasscode(next);
+  const handleViewLanding = (book: Book) => { window.location.hash = `/book/${book.slug}`; };
+
   const renderMain = () => {
     if (view.type === 'mega-admin') {
       return (
@@ -170,18 +179,12 @@ export default function App() {
           books={books}
           onBooksChange={handleBooksChange}
           onEditBook={book => setView({ type: 'book-admin', book })}
-          onViewLanding={book => { window.location.hash = `/book/${book.slug}`; }}
-          adminEmail={adminUser?.email || ''}
-          onChangePassword={changeAdminPassword}
-          onSignOut={async () => {
-            await signOutAdmin();
-            setView({ type: 'none' });
-            window.location.hash = '';
-          }}
+          onViewLanding={handleViewLanding}
+          megaPasscode={megaPasscode}
+          onMegaPasscodeChanged={handleMegaPasscodeChanged}
         />
       );
     }
-
     if (view.type === 'book-admin') {
       return (
         <BookAdmin
@@ -191,15 +194,14 @@ export default function App() {
         />
       );
     }
-
     if (view.type === 'landing') {
       return (
-        <BookLanding book={view.book} />
+        <BookLanding book={view.book} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
       );
     }
 
-    // Hub (no hash or no book)
-    const publishedBooks = books.filter(b => b.published);
+    // ── Hub: Show all books ──
+    const publishedBooks = books.filter(b => b.published !== false);
     return (
       <div className="min-h-screen bg-[#F7F5EF] text-[#1C1B1F] font-[Inter] flex flex-col">
         {/* Hero */}
@@ -218,7 +220,9 @@ export default function App() {
               Practical, no-fluff resources to help you grow your sales, build your brand, and scale your business.
             </p>
             <div className="flex items-center justify-center gap-4 mt-6">
-              <span className="font-[JetBrains_Mono] text-[10px] tracking-wider text-slate-400">{publishedBooks.length} {publishedBooks.length === 1 ? 'BOOK' : 'BOOKS'} AVAILABLE</span>
+              <span className="font-[JetBrains_Mono] text-[10px] tracking-wider text-slate-400">
+                {publishedBooks.length} {publishedBooks.length === 1 ? 'BOOK' : 'BOOKS'} AVAILABLE
+              </span>
             </div>
           </div>
         </section>
@@ -262,7 +266,7 @@ export default function App() {
           <div className="font-[Space_Grotesk] font-semibold text-[14px]">Olakunle Samuel</div>
           <div className="font-[JetBrains_Mono] text-[10px] tracking-[0.6px] text-[#6B6860] uppercase mt-[3px]">Nexa Growth Studio — Ibadan, Nigeria</div>
           <div className="font-[JetBrains_Mono] text-[9px] tracking-wider text-slate-400 mt-2">
-            {isOnline ? `☁️ Synced ${lastSyncStr ? new Date(lastSyncStr).toLocaleString() : 'just now'}` : '📡 Firebase offline'}
+            {isOnline ? `☁️ Live Cloud Synced ${lastSyncStr ? new Date(lastSyncStr).toLocaleTimeString() : ''}` : '⚡ Live Preview Ready'}
           </div>
         </footer>
       </div>
@@ -273,80 +277,34 @@ export default function App() {
     <>
       {renderMain()}
 
-      {/* Firebase Authentication protects every admin route. */}
-      {adminLoginOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6" onClick={() => setAdminLoginOpen(false)}>
+      {/* Mega Admin Passcode Modal */}
+      {megaPasscodeOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6" onClick={() => setMegaPasscodeOpen(false)}>
           <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-1">
               <span className="bg-amber-500 text-slate-950 font-black text-sm w-7 h-7 rounded flex items-center justify-center">N</span>
               <h3 className="font-[Space_Grotesk] text-lg font-bold text-amber-400">Nexa HQ Access</h3>
             </div>
-            <p className="text-xs text-slate-400 mb-5">Sign in with the administrator account created in Firebase Authentication.</p>
-            <form onSubmit={handleAdminLogin} className="flex flex-col gap-3">
-              <input
-                required
-                type="email"
-                autoComplete="username"
-                placeholder="Admin email"
-                value={adminEmail}
-                onChange={e => setAdminEmail(e.target.value)}
-                className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-              <input
-                required
-                type="password"
-                autoComplete="current-password"
-                placeholder="Admin password"
-                value={adminPassword}
-                onChange={e => setAdminPassword(e.target.value)}
-                className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-center tracking-widest font-mono"
-                autoFocus
+            <p className="text-xs text-slate-400 mb-5">Enter the Mega Admin passcode to manage all books.</p>
+            <form onSubmit={handleMegaLogin} className="flex flex-col gap-3">
+              <input 
+                required 
+                type="password" 
+                placeholder="Enter mega admin passcode" 
+                value={megaCode} 
+                onChange={e => setMegaCode(e.target.value)} 
+                className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-center tracking-widest font-mono" 
+                autoFocus 
               />
               {megaErr && <p className="text-xs text-red-400 text-center">{megaErr}</p>}
               <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm py-3 rounded-full mt-1 transition">
-                Sign in to Publishing HQ
+                Unlock Publishing HQ
               </button>
             </form>
-            <button onClick={() => setAdminLoginOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 font-bold">✕</button>
+            <button onClick={() => setMegaPasscodeOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 font-bold">✕</button>
           </div>
         </div>
       )}
     </>
   );
 }
-
-// ─── Type helpers ──
-type ViewMode =
-  | { type: 'landing'; book: Book }
-  | { type: 'book-admin'; book: Book }
-  | { type: 'mega-admin' }
-  | { type: 'none' };
-
-// ─── Seed book ──
-const SEED_BOOK: Book = {
-  id: 'seed_sbsp_001',
-  slug: 'small-business-sales-playbook',
-  title: 'The Small Business Sales Playbook',
-  subtitle: 'A practical, no-fluff guide to closing more sales and growing your business — written for Nigerian small business owners.',
-  author: 'Olakunle Samuel',
-  authorRole: 'Nexa Growth Studio — Ibadan, Nigeria',
-  kicker: 'Free Guide · No Strings Attached',
-  type: 'free',
-  whatsInside: [
-    'A simple framework for understanding your ideal customer and speaking directly to their needs.',
-    'Proven sales conversation scripts tailored for Nigerian market dynamics — no generic templates.',
-    'How to close deals confidently without being pushy — practical guidance for everyday business.',
-  ],
-  ctaTitle: 'Get your free copy',
-  ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
-  adminWhatsapp: '+2349030192034',
-  published: true,
-  createdAt: new Date().toISOString(),
-  donation: {
-    accountName: 'Olakunle Samuel',
-    accountNumber: '0123456789',
-    bankName: 'GTBank',
-    thankYouMessage: "Thank you for downloading The Small Business Sales Playbook! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
-    donationMessage: 'Support our work — donate any amount you wish.',
-  },
-};

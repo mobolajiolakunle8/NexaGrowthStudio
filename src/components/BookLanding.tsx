@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
-import { createLeadInCloud } from '../cloud';
+import { schedulePush } from '../cloud';
 import BookCover from './BookCover';
 
 const isValidName = (v: string) => v.trim().length >= 2;
@@ -9,9 +9,10 @@ const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 interface Props {
   book: Book;
+  onAdminAccess: () => void;
 }
 
-export default function BookLanding({ book }: Props) {
+export default function BookLanding({ book, onAdminAccess }: Props) {
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [name, setName] = useState('');
@@ -101,15 +102,39 @@ export default function BookLanding({ book }: Props) {
     };
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
-    await createLeadInCloud(newLead).catch(error => {
-      console.error('Lead cloud save failed:', error);
-    });
+    schedulePush();
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName(''); setEmail(''); setPhone('');
     setSubmitting(false);
     setSent(true);
   };
+
+  const [passcodeOpen, setPasscodeOpen] = useState(false);
+  const [adminCode, setAdminCode] = useState('');
+  const [adminErr, setAdminErr] = useState('');
+
+  const handleAdminCheck = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminCode === book.adminPasscode) {
+      onAdminAccess();
+    } else {
+      setAdminErr('Incorrect passcode.');
+    }
+  };
+
+  // Hash-based admin access for this book
+  useMemo(() => {
+    const checkHash = () => {
+      const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+      if (hash === `admin/${book.slug}` || hash === `admin/book/${book.slug}`) {
+        setPasscodeOpen(true);
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, [book.slug]);
 
   const isFree = book.type === 'free';
 
@@ -294,6 +319,21 @@ export default function BookLanding({ book }: Props) {
         </div>
       )}
 
+      {/* Book-Level Admin Passcode Modal */}
+      {passcodeOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6" onClick={() => setPasscodeOpen(false)}>
+          <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <h3 className="font-[Space_Grotesk] text-lg font-bold text-amber-400 mb-1">🔐 Book Admin Access</h3>
+            <p className="text-xs text-slate-400 mb-4">Enter the passcode for "{book.title}"</p>
+            <form onSubmit={handleAdminCheck} className="flex flex-col gap-3">
+              <input required type="password" placeholder="Enter book passcode" value={adminCode} onChange={e => setAdminCode(e.target.value)} className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-center tracking-widest font-mono" autoFocus />
+              {adminErr && <p className="text-xs text-red-400 text-center">{adminErr}</p>}
+              <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm py-3 rounded-full transition">Unlock Dashboard</button>
+            </form>
+            <button onClick={() => setPasscodeOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 font-bold">✕</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

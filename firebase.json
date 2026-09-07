@@ -4,7 +4,9 @@
     "public": "dist",
     "ignore": [
       "**/.*",
-      "**/node_modules/**"
+      "node_modules",
+      "dist/**/*.js",
+      "dist/**/*.css"
     ],
     "rewrites": [
       {
@@ -15,8 +17,5 @@
   },
   "database": {
     "rules": "database.rules.json"
-  },
-  "storage": {
-    "rules": "storage.rules"
   }
 }
