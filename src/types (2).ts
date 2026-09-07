@@ -57,3 +57,6 @@ export const MEGA_ADMIN_PASSCODE_KEY = 'nexa_mega_admin_passcode';
 export const BOOKS_STORAGE_KEY = 'nexa_books_v1';
 export const LEADS_STORAGE_KEY = 'nexa_leads_v1';
 export const MEGA_ADMIN_DEFAULT = 'nexaadmin2024';
+export const CLOUD_DB_URL_KEY = 'nexa_cloud_db_url';
+export const CLOUD_SYNC_ENABLED_KEY = 'nexa_cloud_sync_enabled';
+export const CLOUD_LAST_SYNC_KEY = 'nexa_cloud_last_sync';

@@ -99,6 +99,11 @@ export function buildGuidePdf(recipientName: string, book: Book): Blob {
 
 export function downloadGuidePdf(recipientName: string, book: Book) {
   if (book.customPdf) {
+    // customPdf may be an https:// link (hosted PDF) or a data: URL (uploaded file)
+    if (/^https?:\/\//i.test(book.customPdf)) {
+      window.open(book.customPdf, '_blank', 'noopener');
+      return;
+    }
     const a = document.createElement('a');
     a.href = book.customPdf;
     a.download = `${book.slug}.pdf`;
@@ -116,4 +121,60 @@ export function downloadGuidePdf(recipientName: string, book: Book) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+}
+
+/* ── Image helpers: compress uploads so they fit localStorage + cloud ── */
+
+export function isRemoteUrl(v?: string): boolean {
+  return !!v && /^https?:\/\//i.test(v);
+}
+
+export function approxDataUrlKB(dataUrl: string): number {
+  // base64 ≈ 4/3 of bytes
+  const b64 = dataUrl.split(',')[1] || '';
+  return Math.round((b64.length * 3) / 4 / 1024);
+}
+
+/** Resize + recompress an image file. Returns a data URL (JPEG unless PNG with transparency is small). */
+export function compressImageFile(file: File, maxDim = 900, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not decode image. Use JPG or PNG.'));
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          const scale = Math.min(1, maxDim / Math.max(width, height));
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Canvas not supported in this browser.');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          // Prefer JPEG for photos (much smaller); keep PNG only for tiny graphics
+          const out = canvas.toDataURL('image/jpeg', quality);
+          resolve(out);
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error('Image processing failed.'));
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error('Could not read file.'));
+    r.onload = () => resolve(r.result as string);
+    r.readAsDataURL(file);
+  });
 }

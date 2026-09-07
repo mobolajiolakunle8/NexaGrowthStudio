@@ -1,198 +1,201 @@
-import {
-  EmailAuthProvider,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  signInWithEmailAndPassword,
-  signOut,
-  updatePassword,
-  type User,
-} from 'firebase/auth';
-import { get, onValue, push, ref, remove, set, update } from 'firebase/database';
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+// 🔐 Firebase Cloud Sync Module — Local + Cloud with proper imports
+
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, get, set, onValue } from 'firebase/database';
 import type { Book, Lead } from './types';
-import { BOOKS_STORAGE_KEY, LEADS_STORAGE_KEY } from './types';
-import { auth, db, firebaseDatabaseUrl, storage } from './firebase';
 
-const booksRef = ref(db, 'nexa/books');
-const leadsRef = ref(db, 'nexa/leads');
+// ─── Local storage keys ─────────────────────────────────────
+const LS_BOOKS = 'nexa_books_v1';
+const LS_LEADS = 'nexa_leads_v1';
 
-const collectionToArray = <T,>(value: unknown): T[] => {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean) as T[];
-  if (typeof value === 'object') return Object.values(value as Record<string, T>);
-  return [];
-};
-
-const isBook = (value: unknown): value is Book => {
-  const item = value as Partial<Book> | null;
-  return !!item && typeof item.id === 'string' && typeof item.title === 'string' && Array.isArray(item.whatsInside);
-};
-
-const isLead = (value: unknown): value is Lead => {
-  const item = value as Partial<Lead> | null;
-  return !!item && typeof item.id === 'string' && typeof item.bookId === 'string' && typeof item.email === 'string' && typeof item.phone === 'string';
-};
-
-const normalizeBooks = (value: unknown) => collectionToArray<unknown>(value).filter(isBook);
-const normalizeLeads = (value: unknown) => collectionToArray<unknown>(value).filter(isLead);
-
+// ─── Read/write storage (safe in private mode) ────────────────
 export function readLocal(): { books: Book[]; leads: Lead[] } {
-  let books: Book[] = [];
-  let leads: Lead[] = [];
   try {
-    const raw = localStorage.getItem(BOOKS_STORAGE_KEY);
-    if (raw) books = JSON.parse(raw) as Book[];
-  } catch { /* local fallback unavailable */ }
-  try {
-    const raw = localStorage.getItem(LEADS_STORAGE_KEY);
-    if (raw) leads = JSON.parse(raw) as Lead[];
-  } catch { /* local fallback unavailable */ }
-  return { books, leads };
+    const b = localStorage.getItem(LS_BOOKS);
+    if (b) return { books: JSON.parse(b) as Book[], leads: [] };
+    return { books: [], leads: [] };
+  } catch { return { books: [], leads: [] }; }
 }
 
-export function writeLocal(books: Book[], leads: Lead[]) {
-  try { localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(books)); } catch { /* quota */ }
-  try { localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(leads)); } catch { /* quota */ }
+export function writeLocal(books: Book[], leads: Lead[]): void {
+  try { localStorage.setItem(LS_BOOKS, JSON.stringify(books)); } catch { /* */ }
+  try { localStorage.setItem(LS_LEADS, JSON.stringify(leads)); } catch { /* */ }
 }
 
-export function subscribeToAdmin(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback);
+// ─── Settings (localStorage helpers for MegaAdmin) ─────────────────────────
+export function getEffectiveDbUrl(): string {
+  try { return localStorage.getItem('nexa_cloud_db_url') || ''; } catch { return ''; }
 }
 
-export async function signInAdmin(email: string, password: string) {
-  return signInWithEmailAndPassword(auth, email.trim(), password);
+export function setDbUrl(url: string): void {
+  try { localStorage.setItem('nexa_cloud_db_url', url); } catch { /* */ }
 }
 
-export async function signOutAdmin() {
-  await signOut(auth);
+export function isSyncEnabled(): boolean {
+  try { return localStorage.getItem('nexa_cloud_sync_enabled') === 'true'; } catch { return false; }
 }
 
-export async function changeAdminPassword(currentPassword: string, newPassword: string) {
-  const user = auth.currentUser;
-  if (!user?.email) throw new Error('No authenticated admin account.');
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await updatePassword(user, newPassword);
+export function setSyncEnabled(enabled: boolean): void {
+  try { localStorage.setItem('nexa_cloud_sync_enabled', String(enabled)); } catch { /* */ }
 }
 
-export function startLiveSync(callback: (books: Book[]) => void) {
-  return onValue(booksRef, snapshot => callback(normalizeBooks(snapshot.val())));
+export function getLastSyncTime(): string | null {
+  try { return localStorage.getItem('nexa_cloud_last_sync'); } catch { return null; }
 }
 
-export function startLeadSync(callback: (leads: Lead[]) => void) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  return onValue(leadsRef, snapshot => callback(normalizeLeads(snapshot.val())));
+/** Legacy alias for MegaAdmin */
+export function getLastSync(): string | null {
+  return getLastSyncTime();
 }
 
-export async function fetchFromCloud() {
-  const [bookSnapshot, leadSnapshot] = await Promise.all([
-    get(booksRef),
-    auth.currentUser ? get(leadsRef) : Promise.resolve(null),
-  ]);
-  return {
-    books: normalizeBooks(bookSnapshot.val()),
-    leads: leadSnapshot ? normalizeLeads(leadSnapshot.val()) : [],
-  };
-}
-
-export async function saveBooksToCloud(books: Book[]) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  const payload = Object.fromEntries(books.map(book => {
-    // Legacy browser passcodes must never be published in a public book record.
-    const publicBook = { ...book } as Book & { adminPasscode?: string };
-    delete publicBook.adminPasscode;
-    if (publicBook.type === 'paid') delete publicBook.customPdf;
-    return [book.id, JSON.parse(JSON.stringify(publicBook))];
-  }));
-  await set(booksRef, payload);
-  localStorage.setItem('nexa_cloud_last_sync', new Date().toISOString());
-}
-
-export async function createLeadInCloud(lead: Lead) {
-  const id = lead.id || push(leadsRef).key || crypto.randomUUID();
-  const publicLead = {
-    id,
-    bookId: lead.bookId,
-    name: lead.name,
-    email: lead.email,
-    phone: lead.phone,
-    date: lead.date,
-    status: 'New',
-    ...(lead.paid === false ? { paid: false } : {}),
-  };
-  await set(ref(db, `nexa/leads/${id}`), publicLead);
-  return { ...lead, ...publicLead } as Lead;
-}
-
-export async function updateLeadInCloud(id: string, changes: Partial<Lead>) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  await update(ref(db, `nexa/leads/${id}`), changes);
-}
-
-export async function deleteLeadInCloud(id: string) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  await remove(ref(db, `nexa/leads/${id}`));
-}
-
-export async function uploadBookAsset(
-  bookId: string,
-  kind: 'cover' | 'pdf',
-  file: Blob,
-  filename: string,
-  publicPdf = true,
-) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const folder = kind === 'cover' ? `books/${bookId}/cover` : publicPdf ? `books/${bookId}/public-pdf` : `private-books/${bookId}/pdf`;
-  const target = storageRef(storage, `${folder}/${Date.now()}-${safeName}`);
-  await uploadBytes(target, file, { contentType: file.type });
-  const url = await getDownloadURL(target);
-  if (kind === 'pdf' && !publicPdf) {
-    await set(ref(db, `nexa/privateAssets/${bookId}/pdfUrl`), url);
-  }
-  return url;
-}
-
-export async function getPrivatePdfUrl(bookId: string) {
-  if (!auth.currentUser) throw new Error('Admin sign-in required.');
-  const snapshot = await get(ref(db, `nexa/privateAssets/${bookId}/pdfUrl`));
-  return snapshot.exists() && typeof snapshot.val() === 'string' ? snapshot.val() as string : null;
-}
-
-export async function testConnection(_databaseUrl?: string) {
-  try {
-    await get(booksRef);
-    return { ok: true, message: `Connected to ${firebaseDatabaseUrl}` };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : 'Firebase connection failed.' };
-  }
-}
-
-export const getEffectiveDbUrl = () => firebaseDatabaseUrl;
-export const setDbUrl = (_url: string) => undefined;
-export const isSyncEnabled = () => true;
-export const setSyncEnabled = (_enabled: boolean) => undefined;
-export const getLastSync = () => localStorage.getItem('nexa_cloud_last_sync');
-export const pullFromCloud = async (_databaseUrl?: string) => fetchFromCloud();
-export const pushToCloud = async (...args: unknown[]) => {
-  const books = (args.length === 3 ? args[1] : args[0]) as Book[];
-  const leads = normalizeLeads(args.length === 3 ? args[2] : args[1]);
-  await saveBooksToCloud(books);
-  if (auth.currentUser) {
-    const leadPayload = Object.fromEntries(leads.map(lead => [lead.id, JSON.parse(JSON.stringify(lead))]));
-    await set(leadsRef, leadPayload);
-  }
-  return true;
+// ─── Firebase Configuration ────────────────────────────────────
+const firebaseConfig = {
+  apiKey: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_API_KEY as string) || "AIzaSyCQZpR0XjSVTfbR4kpsT-x9KPMyr9igjMU",
+  authDomain: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_AUTH_DOMAIN as string) || "nexa-growth-studio.firebaseapp.com",
+  databaseURL: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_DATABASE_URL as string) || "https://nexa-growth-studio-default-rtdb.firebaseio.com",
+  projectId: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_PROJECT_ID as string) || "nexa-growth-studio",
+  storageBucket: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_STORAGE_BUCKET as string) || "nexa-growth-studio.firebasestorage.app",
+  messagingSenderId: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_MESSAGING_SENDER_ID as string) || "1041308945872",
+  appId: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_APP_ID as string) || "1:1041308945872:web:9ed3b79b0df00cc857fdd5",
+  measurementId: (typeof import.meta !== 'undefined' && (import.meta as Record<string, any>)?.env?.VITE_FIREBASE_MEASUREMENT_ID as string) || "G-1PPCHGHWH7"
 };
 
-let pushTimer: ReturnType<typeof setTimeout> | null = null;
-export function schedulePush(delayMs = 500) {
-  if (pushTimer) clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
-    if (!auth.currentUser) return;
-    const { books } = readLocal();
-    await saveBooksToCloud(books).catch(console.error);
+// Initialize Firebase — the 'Vite env' will be omitted when running in Node-like environments (e.g., during tests).
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const nexaRef = ref(db, 'nexa');
+
+// ─── Firebase Operations ─────────────────────────────────────
+
+export async function fetchFromCloud(): Promise<{ books: Book[]; leads: Lead[] } | null> {
+  try {
+    const snapshot = await get(nexaRef);
+    if (!snapshot.exists()) return { books: [], leads: [] };
+    const data = snapshot.val() as Record<string, unknown> | null;
+    return { books: (data?.books ?? []) as Book[], leads: (data?.leads ?? []) as Lead[] };
+  } catch (e) {
+    console.error('fetchFromCloud failed:', e);
+    return null;
+  }
+}
+
+/** Legacy alias — supports both pullFromCloud() and pullFromCloud(url) calls */
+export async function pullFromCloud(databaseUrl?: string): Promise<{ books: Book[]; leads: Lead[] } | null> {
+  if (databaseUrl) return fetchFromCloudUrl(databaseUrl);
+  return fetchFromCloud();
+}
+
+export async function fetchFromCloudUrl(databaseUrl: string): Promise<{ books: Book[]; leads: Lead[] } | null> {
+  try {
+    const app = initializeApp({ ...firebaseConfig, databaseURL: databaseUrl });
+    const db = getDatabase(app);
+    const snapshot = await get(ref(db, 'nexa'));
+    if (!snapshot.exists()) return { books: [], leads: [] };
+    const data = snapshot.val() as Record<string, unknown> | null;
+    return { books: (data?.books ?? []) as Book[], leads: (data?.leads ?? []) as Lead[] };
+  } catch (e) {
+    console.error('fetchFromCloudUrl failed:', e);
+    return null;
+  }
+}
+
+export async function pushToCloud(books: Book[], leads: Lead[]): Promise<boolean> {
+  try {
+    await set(nexaRef, { books, leads, updatedAt: new Date().toISOString() });
+    writeLocal(books, leads);
+    return true;
+  } catch (e) {
+    console.error('pushToCloud failed:', e);
+    return false;
+  }
+}
+
+export async function pushToCloudUrl(databaseUrl: string, books: Book[], leads: Lead[]): Promise<boolean> {
+  try {
+    const app = initializeApp({ ...firebaseConfig, databaseURL: databaseUrl });
+    const db = getDatabase(app);
+    await set(ref(db, 'nexa'), { books, leads, updatedAt: new Date().toISOString() });
+    return true;
+  } catch (e) {
+    console.error('pushToCloudUrl failed:', e);
+    return false;
+  }
+}
+
+export async function pushLocalToCloud(): Promise<boolean> {
+  const { books, leads } = readLocal();
+  return pushToCloud(books, leads);
+}
+
+// ─── Live Sync ──────────────────────────────────────────────────
+let liveUnsub: (() => void) | null = null;
+let liveCb: ((books: Book[], leads: Lead[]) => void) | null = null;
+
+export function startLiveSync(callback: (books: Book[], leads: Lead[]) => void): () => void {
+  if (liveUnsub) { liveUnsub(); liveUnsub = null; }
+  liveCb = callback;
+  liveUnsub = onValue(
+    nexaRef,
+    (snap) => {
+      if (!snap.exists()) { if (liveCb) liveCb([], []); return; }
+      const d = snap.val() as Record<string, unknown> | null;
+      const books = (d?.books ?? []) as Book[];
+      const leads = (d?.leads ?? []) as Lead[];
+      if (liveCb) liveCb(books, leads);
+    }
+  );
+  return () => { if (liveUnsub) { liveUnsub(); liveUnsub = null; } liveCb = null; };
+}
+
+export function stopLiveSync(): void {
+  if (liveUnsub) { liveUnsub(); liveUnsub = null; }
+  liveCb = null;
+}
+
+export function isSyncActiveFn(): boolean {
+  return !!liveUnsub;
+}
+
+// ─── Connection Test ─────────────────────────────────────────────
+export async function testConnection(databaseUrl?: string): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  try {
+    if (databaseUrl) {
+      const app = initializeApp({ ...firebaseConfig, databaseURL: databaseUrl });
+      const db = getDatabase(app);
+      await get(ref(db, 'nexa'));
+      return { ok: true, message: 'Connected to Firebase (custom URL).' };
+    }
+    await get(nexaRef);
+    return { ok: true, message: 'Connected to Firebase Realtime Database.' };
+  } catch (e) {
+    return {
+      ok: false,
+      message: `Connection failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+// ─── Debounced Push ────────────────────────────────────────────────
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+export function schedulePush(delayMs = 500): void {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(async () => {
+    try { await pushLocalToCloud(); } catch (e) { console.error('schedulePush error:', e); }
   }, delayMs);
 }
 
-export const stopLiveSync = () => undefined;
+export function cancelScheduledPush(): void {
+  if (timer) { clearTimeout(timer); timer = null; }
+}
+
+// ─── Cleanup ────────────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    stopLiveSync();
+    cancelScheduledPush();
+  });
+}
