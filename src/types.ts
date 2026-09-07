@@ -52,6 +52,5 @@ export interface Lead {
   notes?: string;
 }
 
-export const MEGA_ADMIN_PASSCODE_KEY = 'nexa_mega_admin_passcode';
 export const BOOKS_STORAGE_KEY = 'nexa_books_v1';
 export const LEADS_STORAGE_KEY = 'nexa_leads_v1';

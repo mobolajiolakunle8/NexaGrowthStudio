@@ -1,35 +1,34 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
-    "public": {
+    "nexa": {
       "books": {
         ".read": true,
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
-      }
-    },
-    "private": {
-      "books": {
-        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
-        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
-      }
-    },
-    "leads": {
-      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
-      "$leadId": {
-        ".write": "(auth != null && root.child('admins').child(auth.uid).val() === true) || (!data.exists() && newData.child('id').val() === $leadId && newData.child('status').val() === 'New')",
-        ".validate": "newData.hasChildren(['id', 'bookId', 'name', 'email', 'phone', 'date', 'status']) && newData.child('id').isString() && newData.child('id').val().length <= 80 && newData.child('bookId').isString() && newData.child('bookId').val().length <= 100 && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 120 && newData.child('email').isString() && newData.child('email').val().length <= 200 && newData.child('phone').isString() && newData.child('phone').val().length <= 40 && newData.child('date').isString() && newData.child('status').isString()"
-      }
-    },
-    "admins": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID'"
+      },
+      "leads": {
+        ".read": "auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID'",
+        "$leadId": {
+          ".write": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (!data.exists() && newData.exists())",
+          ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.hasChildren(['id', 'bookId', 'name', 'email', 'phone', 'date', 'status']) && newData.child('id').val() === $leadId && newData.child('status').val() === 'New')",
+          "id": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val() === $leadId)" },
+          "bookId": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val().length > 0 && newData.val().length <= 120)" },
+          "name": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val().length >= 2 && newData.val().length <= 120)" },
+          "email": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val().length >= 5 && newData.val().length <= 254)" },
+          "phone": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val().length >= 7 && newData.val().length <= 24)" },
+          "date": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || (newData.isString() && newData.val().length <= 40)" },
+          "status": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || newData.val() === 'New'" },
+          "paid": { ".validate": "(auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID') || newData.val() === false" },
+          "$other": { ".validate": "auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID'" }
+        }
+      },
+      "privateAssets": {
+        ".read": "auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID'",
+        ".write": "auth != null && auth.uid === 'REPLACE_WITH_FIREBASE_ADMIN_UID'"
+      },
+      "$other": {
+        ".read": false,
         ".write": false
       }
-    },
-    "meta": {
-      ".read": true,
-      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
     }
   }
 }

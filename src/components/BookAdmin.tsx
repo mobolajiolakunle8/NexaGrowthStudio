@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
-import { deleteLeadFromCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
+import { deleteLeadInCloud, getPrivatePdfUrl, updateLeadInCloud, uploadBookAsset } from '../cloud';
 
 interface Props {
   book: Book;
@@ -17,6 +17,13 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (book.type !== 'paid') return;
+    void getPrivatePdfUrl(book.id).then(url => {
+      if (url) setEditBook(current => ({ ...current, customPdf: url }));
+    });
+  }, [book.id, book.type]);
 
   const filteredLeads = leads.filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -44,7 +51,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (confirm('Delete this lead?')) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
-      void deleteLeadFromCloud(id);
+      void deleteLeadInCloud(id);
       setSelectedLead(null);
     }
   };
@@ -65,9 +72,13 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     setCoverBusy(true);
     setCoverMsg(null);
     try {
-      const url = await uploadBookAsset(book.id, 'cover', file);
+      const { compressImageFile, approxDataUrlKB } = await import('../storage');
+      const compressed = await compressImageFile(file, 900, 0.82);
+      const kb = approxDataUrlKB(compressed);
+      const blob = await fetch(compressed).then(response => response.blob());
+      const url = await uploadBookAsset(book.id, 'cover', blob, file.name);
       setEditBook(prev => ({ ...prev, coverImage: url }));
-      setCoverMsg('Cover uploaded to Firebase Storage. Save asset changes to publish it.');
+      setCoverMsg(`Cover optimized to ~${kb}KB and uploaded to Firebase Storage.`);
     } catch {
       setCoverMsg('Could not process that image. Try a JPG or PNG file.');
     }
@@ -80,10 +91,15 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (!file) return;
     setPdfMsg(null);
     const sizeMB = file.size / 1024 / 1024;
+    if (sizeMB > 25) {
+      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB. Please use a PDF under 25MB.`);
+      e.target.value = '';
+      return;
+    }
     try {
-      const url = await uploadBookAsset(book.id, 'pdf', file);
+      const url = await uploadBookAsset(book.id, 'pdf', file, file.name, book.type === 'free');
       setEditBook(prev => ({ ...prev, customPdf: url }));
-      setPdfMsg(`PDF uploaded to Firebase Storage (${sizeMB.toFixed(1)}MB). Save asset changes to publish it.`);
+      setPdfMsg(`PDF uploaded to Firebase Storage (${sizeMB.toFixed(1)}MB).`);
     } catch {
       setPdfMsg('Could not read that PDF file.');
     }
@@ -242,7 +258,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                   )}
 
                   {book.type === 'free' && (
-                    <button onClick={() => downloadGuidePdf(selectedLead.name, book)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium py-2.5 rounded-lg border border-slate-700 transition">📄 Send PDF Manually</button>
+                    <button onClick={() => downloadGuidePdf(selectedLead.name, editBook)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium py-2.5 rounded-lg border border-slate-700 transition">📄 Send PDF Manually</button>
                   )}
 
                   <a

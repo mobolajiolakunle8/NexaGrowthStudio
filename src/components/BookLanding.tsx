@@ -101,11 +101,9 @@ export default function BookLanding({ book }: Props) {
     };
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
-    try {
-      await createLeadInCloud(newLead);
-    } catch (error) {
-      console.error('Lead was saved locally but could not be synced.', error);
-    }
+    await createLeadInCloud(newLead).catch(error => {
+      console.error('Lead cloud save failed:', error);
+    });
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName(''); setEmail(''); setPhone('');
