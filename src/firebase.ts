@@ -1,18 +1,43 @@
-import { initializeApp } from 'firebase/app';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCQZpR0XjSVTfbR4kpsT-x9KPMyr9igjMU",
-  authDomain: "nexa-growth-studio.firebaseapp.com",
-  databaseURL: "https://nexa-growth-studio-default-rtdb.firebaseio.com",
-  projectId: "nexa-growth-studio",
-  storageBucket: "nexa-growth-studio.firebasestorage.app",
-  messagingSenderId: "1041308945872",
-  appId: "1:1041308945872:web:9ed3b79b0df00cc857fdd5",
-  measurementId: "G-1PPCHGHWH7"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+const required = [
+  firebaseConfig.apiKey,
+  firebaseConfig.authDomain,
+  firebaseConfig.databaseURL,
+  firebaseConfig.projectId,
+  firebaseConfig.storageBucket,
+  firebaseConfig.appId,
+];
 
-export const db = getDatabase(app);
-export { app as firebaseApp };
+if (required.some(value => !value)) {
+  throw new Error('Missing Firebase environment variables. Copy .env.example to .env.local and fill in the values.');
+}
+
+export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const auth = getAuth(firebaseApp);
+export const db = getDatabase(firebaseApp);
+export const storage = getStorage(firebaseApp);
+
+export async function initializeAnalytics() {
+  if (!import.meta.env.PROD || !firebaseConfig.measurementId) return;
+  try {
+    const { getAnalytics, isSupported } = await import('firebase/analytics');
+    if (await isSupported()) getAnalytics(firebaseApp);
+  } catch {
+    // Analytics must never prevent the application from loading.
+  }
+}

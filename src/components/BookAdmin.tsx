@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
-import { schedulePush } from '../cloud';
+import { deleteLeadFromCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
 
 interface Props {
   book: Book;
@@ -28,7 +28,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, status } : l);
     saveLeads(updated);
-    schedulePush();
+    void updateLeadInCloud(id, { status });
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
@@ -36,7 +36,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, paid: true } : l);
     saveLeads(updated);
-    schedulePush();
+    void updateLeadInCloud(id, { paid: true });
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true });
   };
 
@@ -44,7 +44,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (confirm('Delete this lead?')) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
-      schedulePush();
+      void deleteLeadFromCloud(id);
       setSelectedLead(null);
     }
   };
@@ -65,11 +65,9 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     setCoverBusy(true);
     setCoverMsg(null);
     try {
-      const { compressImageFile, approxDataUrlKB } = await import('../storage');
-      const compressed = await compressImageFile(file, 900, 0.82);
-      const kb = approxDataUrlKB(compressed);
-      setEditBook(prev => ({ ...prev, coverImage: compressed }));
-      setCoverMsg(`Cover optimized to ~${kb}KB — fits sync and loads fast everywhere.`);
+      const url = await uploadBookAsset(book.id, 'cover', file);
+      setEditBook(prev => ({ ...prev, coverImage: url }));
+      setCoverMsg('Cover uploaded to Firebase Storage. Save asset changes to publish it.');
     } catch {
       setCoverMsg('Could not process that image. Try a JPG or PNG file.');
     }
@@ -82,16 +80,10 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (!file) return;
     setPdfMsg(null);
     const sizeMB = file.size / 1024 / 1024;
-    if (sizeMB > 2.5) {
-      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB — too big to sync across browsers. Host it on Google Drive instead and paste the share link below.`);
-      e.target.value = '';
-      return;
-    }
     try {
-      const { fileToDataUrl } = await import('../storage');
-      const dataUrl = await fileToDataUrl(file);
-      setEditBook(prev => ({ ...prev, customPdf: dataUrl }));
-      setPdfMsg(`PDF attached (${sizeMB.toFixed(1)}MB). It will sync to other browsers.`);
+      const url = await uploadBookAsset(book.id, 'pdf', file);
+      setEditBook(prev => ({ ...prev, customPdf: url }));
+      setPdfMsg(`PDF uploaded to Firebase Storage (${sizeMB.toFixed(1)}MB). Save asset changes to publish it.`);
     } catch {
       setPdfMsg('Could not read that PDF file.');
     }
@@ -291,7 +283,6 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                 { label: 'CTA Title', key: 'ctaTitle', type: 'input' },
                 { label: 'CTA Subtitle', key: 'ctaSubtitle', type: 'textarea' },
                 { label: 'Admin WhatsApp', key: 'adminWhatsapp', type: 'input' },
-                { label: 'Admin Passcode', key: 'adminPasscode', type: 'input' },
               ].map(({ label, key, type }) => (
                 <div key={key}>
                   <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">{label}</label>

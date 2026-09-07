@@ -1,19 +1,15 @@
 import { useState } from 'react';
 import type { Book } from '../types';
-import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
-import { generateId, slugify, saveBooks, loadLeads } from '../storage';
-import {
-  getEffectiveDbUrl, setDbUrl, isSyncEnabled, setSyncEnabled,
-  testConnection, pullFromCloud, pushToCloud, readLocal, writeLocal, getLastSync,
-} from '../cloud';
+import { generateId, slugify, saveBooks, loadBooks, loadLeads, saveLeads } from '../storage';
+import { changeAdminPassword, fetchAdminData, saveBooksToCloud, testConnection } from '../cloud';
 
 interface Props {
   books: Book[];
   onBooksChange: (books: Book[]) => void;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
-  megaPasscode: string;
-  onMegaPasscodeChanged: (next: string) => void;
+  adminEmail: string;
+  onSignOut: () => void;
 }
 
 const EMPTY_FREE_BOOK = (): Partial<Book> => ({
@@ -27,7 +23,6 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
   ctaTitle: 'Get your free copy',
   ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
   adminWhatsapp: '+2349030192034',
-  adminPasscode: 'admin123',
   published: false,
   donation: {
     accountName: 'Olakunle Samuel',
@@ -49,7 +44,6 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   ctaTitle: 'Get the Book',
   ctaSubtitle: 'Secure your copy today and start transforming your business.',
   adminWhatsapp: '+2349030192034',
-  adminPasscode: 'admin123',
   published: false,
   payment: {
     accountName: 'Olakunle Samuel',
@@ -61,7 +55,7 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   },
 });
 
-export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLanding, megaPasscode, onMegaPasscodeChanged }: Props) {
+export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLanding, adminEmail, onSignOut }: Props) {
   const [mainTab, setMainTab] = useState<'books' | 'settings'>('books');
   const [createOpen, setCreateOpen] = useState(false);
   const [bookType, setBookType] = useState<'free' | 'paid'>('free');
@@ -76,14 +70,10 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const [confirmPass, setConfirmPass] = useState('');
   const [passMsg, setPassMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [showPass, setShowPass] = useState(false);
-  const [bookAccess, setBookAccess] = useState<Record<string, { passcode: string; whatsapp: string }>>({});
-  const [accessMsg, setAccessMsg] = useState<string | null>(null);
 
-  const [dbUrl, setDbUrlInput] = useState(getEffectiveDbUrl());
-  const [syncOn, setSyncOn] = useState(isSyncEnabled());
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [syncBusy, setSyncBusy] = useState<'idle' | 'testing' | 'pushing' | 'pulling'>('idle');
-  const [lastSync, setLastSync] = useState<string | null>(getLastSync());
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
   const allLeads = loadLeads();
@@ -101,7 +91,6 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const handleCreate = () => {
     if (!draft.title?.trim()) return alert('Please enter a book title.');
     if (!draft.adminWhatsapp?.trim()) return alert('Please enter the admin WhatsApp number.');
-    if (!draft.adminPasscode?.trim()) return alert('Please enter an admin passcode for this book.');
 
     setCreating(true);
     const id = generateId();
@@ -119,7 +108,6 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
       ctaTitle: draft.ctaTitle || 'Get your copy',
       ctaSubtitle: draft.ctaSubtitle || '',
       adminWhatsapp: draft.adminWhatsapp!,
-      adminPasscode: draft.adminPasscode!,
       published: true,
       createdAt: new Date().toISOString(),
       ...(bookType === 'free' ? { donation: draft.donation } : { payment: draft.payment, price: draft.payment?.price, currency: draft.payment?.currency }),
@@ -150,54 +138,30 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const handleMegaPassChange = (e: React.FormEvent) => {
     e.preventDefault();
     setPassMsg(null);
-    if (curPass !== megaPasscode) { setPassMsg({ ok: false, text: 'Current passcode is incorrect.' }); return; }
     if (newPass.length < 6) { setPassMsg({ ok: false, text: 'New passcode must be at least 6 characters.' }); return; }
     if (newPass !== confirmPass) { setPassMsg({ ok: false, text: 'New passcodes do not match.' }); return; }
-    try { localStorage.setItem(MEGA_ADMIN_PASSCODE_KEY, newPass); } catch { /* */ }
-    onMegaPasscodeChanged(newPass);
-    setCurPass(''); setNewPass(''); setConfirmPass('');
-    setPassMsg({ ok: true, text: 'Mega admin passcode updated. Use the new code next time you log in.' });
-  };
-
-  const getAccessVal = (book: Book, field: 'passcode' | 'whatsapp') => {
-    const ov = bookAccess[book.id];
-    if (ov) return ov[field];
-    return field === 'passcode' ? book.adminPasscode : book.adminWhatsapp;
-  };
-
-  const handleSaveBookAccess = (bookId: string) => {
-    const ov = bookAccess[bookId];
-    if (!ov) return;
-    if (!ov.passcode.trim()) { setAccessMsg('Passcode cannot be empty.'); return; }
-    const updated = books.map(b => b.id === bookId ? { ...b, adminPasscode: ov.passcode.trim(), adminWhatsapp: ov.whatsapp.trim() || b.adminWhatsapp } : b);
-    onBooksChange(updated);
-    saveBooks(updated);
-    setAccessMsg(`Access updated for "${books.find(b => b.id === bookId)?.title}".`);
-    setTimeout(() => setAccessMsg(null), 3000);
+    void changeAdminPassword(curPass, newPass)
+      .then(() => {
+        setCurPass(''); setNewPass(''); setConfirmPass('');
+        setPassMsg({ ok: true, text: 'Firebase administrator password updated.' });
+      })
+      .catch(error => setPassMsg({ ok: false, text: error instanceof Error ? error.message : 'Password update failed.' }));
   };
 
   /* ── Cloud sync settings ── */
-  const handleSaveDbUrl = () => {
-    setDbUrl(dbUrl.trim());
-    setSyncEnabled(syncOn);
-    setSyncMsg({ ok: true, text: syncOn ? 'Cloud sync settings saved and enabled.' : 'Database URL saved. Sync is currently OFF.' });
-  };
-
   const handleTest = async () => {
     setSyncBusy('testing'); setSyncMsg(null);
-    const r = await testConnection(dbUrl);
+    const r = await testConnection();
     setSyncMsg({ ok: r.ok, text: r.message });
     setSyncBusy('idle');
   };
 
   const handlePush = async () => {
-    if (!dbUrl.trim()) { setSyncMsg({ ok: false, text: 'Enter your database URL first.' }); return; }
     setSyncBusy('pushing'); setSyncMsg(null);
     try {
-      const { books: lb, leads: ll } = readLocal();
-      await pushToCloud(dbUrl, lb, ll);
+      await saveBooksToCloud(books);
       setLastSync(new Date().toISOString());
-      setSyncMsg({ ok: true, text: `Uploaded ${lb.length} book(s) and ${ll.length} lead(s) to the cloud. Other browsers will pull this on next load.` });
+      setSyncMsg({ ok: true, text: `Published ${books.length} book(s) to Firebase. Visitors now receive these changes in real time.` });
     } catch (e) {
       setSyncMsg({ ok: false, text: `Upload failed: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -205,15 +169,15 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   };
 
   const handlePull = async () => {
-    if (!dbUrl.trim()) { setSyncMsg({ ok: false, text: 'Enter your database URL first.' }); return; }
     if (!confirm('Download cloud data and replace what is on THIS browser?')) return;
     setSyncBusy('pulling'); setSyncMsg(null);
     try {
-      const cloud = await pullFromCloud(dbUrl);
+      const cloud = await fetchAdminData();
       if (!cloud || (cloud.books.length === 0 && cloud.leads.length === 0)) {
         setSyncMsg({ ok: false, text: 'Cloud database is empty — nothing to download. Push first.' });
       } else {
-        writeLocal(cloud.books, cloud.leads);
+        saveBooks(cloud.books);
+        saveLeads(cloud.leads);
         onBooksChange(cloud.books);
         setLastSync(new Date().toISOString());
         setSyncMsg({ ok: true, text: `Downloaded ${cloud.books.length} book(s) and ${cloud.leads.length} lead(s). Page will reflect cloud data.` });
@@ -226,7 +190,8 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
 
   /* ── Backup ── */
   const handleExport = () => {
-    const { books: lb, leads: ll } = readLocal();
+    const lb = loadBooks();
+    const ll = loadLeads();
     const blob = new Blob([JSON.stringify({ app: 'nexa-publishing', exportedAt: new Date().toISOString(), books: lb, leads: ll }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -246,7 +211,8 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
         const data = JSON.parse(r.result as string);
         if (!Array.isArray(data.books)) throw new Error('Invalid backup file.');
         if (!confirm(`Restore backup with ${data.books.length} book(s) and ${(data.leads || []).length} lead(s)? This replaces current data on THIS browser.`)) return;
-        writeLocal(data.books, Array.isArray(data.leads) ? data.leads : []);
+        saveBooks(data.books);
+        saveLeads(Array.isArray(data.leads) ? data.leads : []);
         onBooksChange(data.books);
         setBackupMsg('Backup restored successfully.');
       } catch {
@@ -275,6 +241,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <span className="hidden md:inline text-[11px] text-slate-400 font-mono">{adminEmail}</span>
             <div className="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
               <button onClick={() => setMainTab('books')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${mainTab === 'books' ? 'bg-amber-500 text-slate-950' : 'text-slate-300'}`}>📚 Books</button>
               <button onClick={() => setMainTab('settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${mainTab === 'settings' ? 'bg-amber-500 text-slate-950' : 'text-slate-300'}`}>⚙️ Settings</button>
@@ -287,6 +254,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
                 + New Book
               </button>
             )}
+            <button onClick={onSignOut} className="bg-slate-800 hover:bg-slate-700 text-white text-xs px-3 py-2.5 rounded-xl border border-slate-700 transition">Sign out</button>
           </div>
         </div>
       </header>
@@ -417,61 +385,28 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
             </form>
           </section>
 
-          {/* 2 — Per-book access */}
+          {/* 2 — Authentication status */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">📖 Book Access Codes</h2>
-            <p className="text-xs text-slate-400 mb-4">Each book has its own admin code + WhatsApp. Share a book's code with a co-admin without exposing HQ.</p>
-            {books.length === 0 && <p className="text-xs text-slate-500">No books yet.</p>}
-            <div className="space-y-3">
-              {books.map(b => (
-                <div key={b.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-white mb-3 truncate">{b.title} <span className="text-[10px] font-mono text-slate-500">#/admin/book/{b.slug}</span></p>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Book passcode</label>
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={getAccessVal(b, 'passcode')}
-                        onChange={e => setBookAccess(p => ({ ...p, [b.id]: { passcode: e.target.value, whatsapp: getAccessVal(b, 'whatsapp') } }))}
-                        className={`${inputCls} font-mono`}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Admin WhatsApp</label>
-                      <input
-                        type="text"
-                        value={getAccessVal(b, 'whatsapp')}
-                        onChange={e => setBookAccess(p => ({ ...p, [b.id]: { passcode: getAccessVal(b, 'passcode'), whatsapp: e.target.value } }))}
-                        className={`${inputCls} font-mono`}
-                      />
-                    </div>
-                  </div>
-                  <button onClick={() => handleSaveBookAccess(b.id)} className="mt-3 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition">Save access for this book</button>
-                </div>
-              ))}
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">Administrator Account</h2>
+            <p className="text-xs text-slate-400 mb-4">All HQ and book-admin routes are protected by Firebase Authentication and the administrator allowlist in Realtime Database.</p>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 block">Signed in as</span>
+              <span className="text-sm text-emerald-400 font-mono">{adminEmail}</span>
             </div>
-            {accessMsg && <p className="text-xs text-emerald-400 mt-3">{accessMsg}</p>}
           </section>
 
           {/* 3 — Cloud sync */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">☁️ Cross-Browser Sync</h2>
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">Cloud Sync</h2>
             <p className="text-xs text-slate-400 mb-4">
-              Connect a free Firebase database once — then edits, covers, PDFs-as-links and leads appear on <b className="text-slate-200">every browser &amp; phone</b>.
+              Firebase is configured for this deployment. Books, leads, covers, and PDF links synchronize across browsers automatically.
               {lastSync && <span className="block mt-1">Last sync: {new Date(lastSync).toLocaleString()}</span>}
             </p>
-            <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Firebase Realtime Database URL</label>
-            <input
-              type="text" value={dbUrl} onChange={e => setDbUrlInput(e.target.value)}
-              placeholder="https://your-project-default-rtdb.firebaseio.com"
-              className={`${inputCls} font-mono mb-3`}
-            />
-            <label className="flex items-center gap-2 text-xs text-slate-300 mb-4 cursor-pointer">
-              <input type="checkbox" checked={syncOn} onChange={e => setSyncOn(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-              Enable automatic sync on this device
-            </label>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 mb-4">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">Realtime Database</p>
+              <p className="text-xs font-mono text-emerald-400 break-all">nexa-growth-studio-default-rtdb.firebaseio.com</p>
+            </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleSaveDbUrl} className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg transition">Save Settings</button>
               <button onClick={handleTest} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
                 {syncBusy === 'testing' ? 'Testing…' : 'Test Connection'}
               </button>
@@ -484,9 +419,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
             </div>
             {syncMsg && <p className={`text-xs mt-3 ${syncMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{syncMsg.text}</p>}
             <div className="mt-4 bg-slate-900 border border-slate-800 rounded-xl p-4 text-[11px] text-slate-400 leading-relaxed">
-              <b className="text-slate-200">Why uploads don't show elsewhere yet:</b> covers/PDFs are saved in this browser only.
-              After connecting the database above, press <b className="text-slate-200">Push</b> here once — then every other browser pulls the same data automatically.
-              For permanent visitor sync, bake the URL into the site code (see the step-by-step guide below the dashboard).
+              Assets uploaded from a book's Assets tab are stored in Firebase Storage. Paid-book PDF URLs are excluded from the public database and remain available only to authenticated administrators.
             </div>
           </section>
 
@@ -545,12 +478,6 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Book Admin Passcode *</label>
-                  <input type="text" value={draft.adminPasscode || ''} onChange={e => setDraft(p => ({ ...p, adminPasscode: e.target.value }))}
-                    placeholder="Set a unique passcode"
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono" />
-                </div>
                 {bookType === 'paid' && (
                   <div>
                     <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Price (₦)</label>

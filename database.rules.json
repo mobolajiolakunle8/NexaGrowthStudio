@@ -1,12 +1,35 @@
 {
   "rules": {
-    "nexa": {
-      ".read": true,
-      ".write": true
+    ".read": false,
+    ".write": false,
+    "public": {
+      "books": {
+        ".read": true,
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+      }
     },
-    "$other": {
-      ".read": false,
-      ".write": false
+    "private": {
+      "books": {
+        ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
+      }
+    },
+    "leads": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$leadId": {
+        ".write": "(auth != null && root.child('admins').child(auth.uid).val() === true) || (!data.exists() && newData.child('id').val() === $leadId && newData.child('status').val() === 'New')",
+        ".validate": "newData.hasChildren(['id', 'bookId', 'name', 'email', 'phone', 'date', 'status']) && newData.child('id').isString() && newData.child('id').val().length <= 80 && newData.child('bookId').isString() && newData.child('bookId').val().length <= 100 && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 120 && newData.child('email').isString() && newData.child('email').val().length <= 200 && newData.child('phone').isString() && newData.child('phone').val().length <= 40 && newData.child('date').isString() && newData.child('status').isString()"
+      }
+    },
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "meta": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true"
     }
   }
 }
