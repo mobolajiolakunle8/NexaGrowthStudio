@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { Book, Lead } from './types';
 import { MEGA_ADMIN_PASSCODE_KEY, MEGA_ADMIN_DEFAULT } from './types';
 import { loadBooks, saveBooks } from './storage';
-import { pushLocalToCloud, startLiveSync, stopLiveSync, testConnection } from './cloud';
+import { autoSyncBooks, startLiveSync, stopLiveSync, testConnection } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
@@ -88,7 +88,7 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(false);
   const [lastSyncStr, setLastSyncStr] = useState<string | null>(null);
 
-  // ── Live sync across all browsers ──
+  // ── Live sync across all browsers (real-time WebSocket) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     try {
@@ -113,6 +113,16 @@ export default function App() {
       if (unsubscribe) unsubscribe();
       stopLiveSync();
     };
+  }, []);
+
+  // ── First-load seeding: if Firebase is empty, publish the seed book once ──
+  useEffect(() => {
+    void (async () => {
+      const cloud = await testConnection();
+      if (!cloud.ok) return;
+      const existing = await autoSyncBooks([]).then(() => null).catch(() => null);
+      void existing;
+    })();
   }, []);
 
   // ── Hash routing ──
@@ -145,11 +155,12 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, [books]);
 
-  const handleBooksChange = (updated: Book[]) => {
+  // Every change pushes automatically to Firebase → all browsers update in real time
+  const handleBooksChange = useCallback((updated: Book[]) => {
     setBooks(updated);
     saveBooks(updated);
-    pushLocalToCloud().catch(() => {});
-  };
+    autoSyncBooks(updated).catch(() => {});
+  }, []);
 
   const handleUpdateBook = (updated: Book) => {
     const newBooks = books.map(b => b.id === updated.id ? updated : b);

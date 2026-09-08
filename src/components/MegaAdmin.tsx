@@ -3,7 +3,7 @@ import type { Book } from '../types';
 import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
 import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
-  getEffectiveDbUrl, setDbUrl, isSyncEnabled, setSyncEnabled,
+  getEffectiveDbUrl,
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync,
 } from '../cloud';
 
@@ -79,8 +79,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const [bookAccess, setBookAccess] = useState<Record<string, { passcode: string; whatsapp: string }>>({});
   const [accessMsg, setAccessMsg] = useState<string | null>(null);
 
-  const [dbUrl, setDbUrlInput] = useState(getEffectiveDbUrl());
-  const [syncOn, setSyncOn] = useState(isSyncEnabled());
+  const dbUrl = getEffectiveDbUrl();
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [syncBusy, setSyncBusy] = useState<'idle' | 'testing' | 'pushing' | 'pulling'>('idle');
   const [lastSync, setLastSync] = useState<string | null>(getLastSync());
@@ -177,12 +176,6 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   };
 
   /* ── Cloud sync settings ── */
-  const handleSaveDbUrl = () => {
-    setDbUrl(dbUrl.trim());
-    setSyncEnabled(syncOn);
-    setSyncMsg({ ok: true, text: syncOn ? 'Cloud sync settings saved and enabled.' : 'Database URL saved. Sync is currently OFF.' });
-  };
-
   const handleTest = async () => {
     setSyncBusy('testing'); setSyncMsg(null);
     const r = await testConnection(dbUrl);
@@ -453,40 +446,32 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
             {accessMsg && <p className="text-xs text-emerald-400 mt-3">{accessMsg}</p>}
           </section>
 
-          {/* 3 — Cloud sync */}
+          {/* 3 — Auto cross-browser sync */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">☁️ Cross-Browser Sync</h2>
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">☁️ Auto Cross-Browser Sync</h2>
             <p className="text-xs text-slate-400 mb-4">
-              Connect a free Firebase database once — then edits, covers, PDFs-as-links and leads appear on <b className="text-slate-200">every browser &amp; phone</b>.
+              <b className="text-emerald-400">● Automatic</b> — no buttons needed. Every edit, lead, cover or PDF syncs to Firebase and appears on every open browser &amp; phone instantly.
               {lastSync && <span className="block mt-1">Last sync: {new Date(lastSync).toLocaleString()}</span>}
             </p>
             <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Firebase Realtime Database URL</label>
             <input
-              type="text" value={dbUrl} onChange={e => setDbUrlInput(e.target.value)}
-              placeholder="https://your-project-default-rtdb.firebaseio.com"
-              className={`${inputCls} font-mono mb-3`}
+              type="text" value={dbUrl} readOnly
+              className={`${inputCls} font-mono mb-3 opacity-70 cursor-not-allowed`}
             />
-            <label className="flex items-center gap-2 text-xs text-slate-300 mb-4 cursor-pointer">
-              <input type="checkbox" checked={syncOn} onChange={e => setSyncOn(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-              Enable automatic sync on this device
-            </label>
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleSaveDbUrl} className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg transition">Save Settings</button>
               <button onClick={handleTest} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
                 {syncBusy === 'testing' ? 'Testing…' : 'Test Connection'}
               </button>
               <button onClick={handlePush} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
-                {syncBusy === 'pushing' ? 'Uploading…' : '⬆ Push This Device → Cloud'}
+                {syncBusy === 'pushing' ? 'Uploading…' : 'Sync Now (one-time migration)'}
               </button>
               <button onClick={handlePull} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
-                {syncBusy === 'pulling' ? 'Downloading…' : '⬇ Pull Cloud → This Device'}
+                {syncBusy === 'pulling' ? 'Downloading…' : 'Load Latest (one-time)'}
               </button>
             </div>
             {syncMsg && <p className={`text-xs mt-3 ${syncMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{syncMsg.text}</p>}
             <div className="mt-4 bg-slate-900 border border-slate-800 rounded-xl p-4 text-[11px] text-slate-400 leading-relaxed">
-              <b className="text-slate-200">Why uploads don't show elsewhere yet:</b> covers/PDFs are saved in this browser only.
-              After connecting the database above, press <b className="text-slate-200">Push</b> here once — then every other browser pulls the same data automatically.
-              For permanent visitor sync, bake the URL into the site code (see the step-by-step guide below the dashboard).
+              <b className="text-slate-200">How it works:</b> this site opens a real-time connection to Firebase. When you add, edit or delete anything, it uploads automatically. Every other browser with the site open receives the change within a second — no refresh needed. The buttons above are only useful for a one-time migration of old browser data.
             </div>
           </section>
 

@@ -1,8 +1,26 @@
 {
   "rules": {
     "nexa": {
-      ".read": true,
-      ".write": true
+      "books": {
+        ".read": true,
+        ".write": true
+      },
+      "leads": {
+        ".read": true,
+        ".write": true
+      },
+      "updatedAt": {
+        ".read": true,
+        ".write": true
+      },
+      "client": {
+        ".read": true,
+        ".write": true
+      },
+      "$other": {
+        ".read": true,
+        ".write": true
+      }
     }
   }
 }
