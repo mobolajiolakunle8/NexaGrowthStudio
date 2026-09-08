@@ -2,15 +2,17 @@ import { useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
 import { schedulePush } from '../cloud';
+import { isHostedLink } from '../assets';
 
 interface Props {
   book: Book;
+  leads: Lead[];
   onUpdateBook: (updated: Book) => void;
+  onLeadUpdated: (all: Lead[]) => void;
   onBack: () => void;
 }
 
-export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
-  const leads = loadLeads().filter(l => l.bookId === book.id);
+export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, onBack }: Props) {
   const [editBook, setEditBook] = useState<Book>(book);
   const [tab, setTab] = useState<'leads' | 'edit' | 'assets'>('leads');
   const [search, setSearch] = useState('');
@@ -29,6 +31,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const updated = all.map(l => l.id === id ? { ...l, status } : l);
     saveLeads(updated);
     schedulePush();
+    onLeadUpdated(updated);
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
@@ -37,6 +40,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     const updated = all.map(l => l.id === id ? { ...l, paid: true } : l);
     saveLeads(updated);
     schedulePush();
+    onLeadUpdated(updated);
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true });
   };
 
@@ -45,8 +49,37 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
       schedulePush();
+      onLeadUpdated(updated);
       setSelectedLead(null);
     }
+  };
+
+  // Direct download link that is sent to the buyer once payment is confirmed
+  const downloadLink = isHostedLink(book.customPdf) ? book.customPdf as string : '';
+
+  const whatsappDigits = (phone: string) => phone.replace(/[^\d]/g, '');
+
+  const buildDeliveryMessage = (lead: Lead) =>
+    [
+      `🎉 Thank you for your payment, ${lead.name}!`,
+      ``,
+      `Your copy of "${book.title}" is ready.`,
+      ``,
+      `⬇️ Download here: ${downloadLink}`,
+      ``,
+      `— ${book.author}`,
+    ].join('\n');
+
+  const whatsappDeliveryUrl = (lead: Lead) =>
+    `https://wa.me/${whatsappDigits(lead.phone)}?text=${encodeURIComponent(buildDeliveryMessage(lead))}`;
+
+  const emailDeliveryUrl = (lead: Lead) =>
+    `mailto:${lead.email}?subject=${encodeURIComponent(`Your download link: ${book.title}`)}&body=${encodeURIComponent(buildDeliveryMessage(lead))}`;
+
+  const copyLink = (lead: Lead) => {
+    navigator.clipboard.writeText(downloadLink);
+    setSentNotice(`Link copied for ${lead.name}`);
+    setTimeout(() => setSentNotice(null), 2500);
   };
 
   const handleSaveBook = () => {
@@ -58,6 +91,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverMsg, setCoverMsg] = useState<string | null>(null);
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
+  const [sentNotice, setSentNotice] = useState<string | null>(null);
 
   const handleBookCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,36 +99,44 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     setCoverBusy(true);
     setCoverMsg(null);
     try {
-      const { compressImageFile, approxDataUrlKB } = await import('../storage');
-      const compressed = await compressImageFile(file, 900, 0.82);
-      const kb = approxDataUrlKB(compressed);
-      setEditBook(prev => ({ ...prev, coverImage: compressed }));
-      setCoverMsg(`Cover optimized to ~${kb}KB — fits sync and loads fast everywhere.`);
-    } catch {
-      setCoverMsg('Could not process that image. Try a JPG or PNG file.');
+      // Upload to Firebase Storage so the cover shows on EVERY browser
+      const { uploadBookCover } = await import('../assets');
+      const url = await uploadBookCover(file, book.slug);
+      setEditBook(prev => ({ ...prev, coverImage: url }));
+      setCoverMsg('✓ Cover uploaded to Storage — it now displays on every browser and device.');
+    } catch (err) {
+      // Fallback: keep a small compressed copy locally if Storage is not set up
+      try {
+        const { compressImageFile } = await import('../storage');
+        const compressed = await compressImageFile(file, 640, 0.75);
+        setEditBook(prev => ({ ...prev, coverImage: compressed }));
+        setCoverMsg(`Storage upload failed (${err instanceof Error ? err.message : 'unknown'}). Saved a compressed local copy — enable Firebase Storage for cross-device covers.`);
+      } catch {
+        setCoverMsg('Could not process that image. Try a JPG or PNG file.');
+      }
     }
     setCoverBusy(false);
     e.target.value = '';
   };
 
+  const [pdfBusy, setPdfBusy] = useState(false);
+
   const handlePdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPdfMsg(null);
-    const sizeMB = file.size / 1024 / 1024;
-    if (sizeMB > 2.5) {
-      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB — too big to sync across browsers. Host it on Google Drive instead and paste the share link below.`);
-      e.target.value = '';
-      return;
-    }
+    setPdfBusy(true);
     try {
-      const { fileToDataUrl } = await import('../storage');
-      const dataUrl = await fileToDataUrl(file);
-      setEditBook(prev => ({ ...prev, customPdf: dataUrl }));
-      setPdfMsg(`PDF attached (${sizeMB.toFixed(1)}MB). It will sync to other browsers.`);
-    } catch {
-      setPdfMsg('Could not read that PDF file.');
+      // Upload to Firebase Storage → get a short https link that every
+      // visitor can download from (unlimited users, never disappears).
+      const { uploadBookPdf } = await import('../assets');
+      const url = await uploadBookPdf(file, book.slug);
+      setEditBook(prev => ({ ...prev, customPdf: url }));
+      setPdfMsg(`✓ Uploaded to Storage. A shareable download link is now attached — every visitor can download it. Click "Save Asset Changes" to publish.`);
+    } catch (err) {
+      setPdfMsg(`Storage upload failed: ${err instanceof Error ? err.message : String(err)}. Make sure Firebase Storage is enabled and storage.rules is deployed.`);
     }
+    setPdfBusy(false);
     e.target.value = '';
   };
 
@@ -207,7 +249,19 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                             </td>
                             {book.type === 'paid' && (
                               <td className="p-4">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.paid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{lead.paid ? '✓ Paid' : 'Unpaid'}</span>
+                                <div className="flex flex-col items-start gap-1.5">
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.paid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{lead.paid ? '✓ Paid' : 'Unpaid'}</span>
+                                  {lead.paid && downloadLink && (
+                                    <a
+                                      href={whatsappDeliveryUrl(lead)}
+                                      target="_blank" rel="noreferrer"
+                                      onClick={e => e.stopPropagation()}
+                                      className="inline-block bg-[#25D366] text-white font-bold text-[9px] px-2 py-1 rounded hover:bg-[#1eb857] transition no-underline"
+                                    >
+                                      📲 Send Link
+                                    </a>
+                                  )}
+                                </div>
                               </td>
                             )}
                           </tr>
@@ -247,6 +301,50 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
 
                   {book.type === 'paid' && !selectedLead.paid && (
                     <button onClick={() => handleMarkPaid(selectedLead.id)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 rounded-lg transition">✓ Mark as Paid</button>
+                  )}
+
+                  {book.type === 'paid' && selectedLead.paid && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 text-center">
+                      <span className="text-emerald-400 text-xs font-bold">✓ Payment Confirmed</span>
+                    </div>
+                  )}
+
+                  {/* ── Direct download delivery ── */}
+                  {downloadLink ? (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+                      <label className="text-[10px] uppercase tracking-wider text-amber-400 block">
+                        ⬇️ Send Direct Download Link
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-[9px] text-slate-400 bg-slate-950 px-2 py-1.5 rounded truncate">{downloadLink}</code>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <a
+                          href={whatsappDeliveryUrl(selectedLead)}
+                          target="_blank" rel="noreferrer"
+                          className="w-full bg-[#25D366] text-white font-bold text-xs py-2.5 rounded-lg text-center hover:bg-[#1eb857] transition no-underline"
+                        >
+                          📲 Send Link to WhatsApp
+                        </a>
+                        <a
+                          href={emailDeliveryUrl(selectedLead)}
+                          target="_blank" rel="noreferrer"
+                          className="w-full bg-slate-700 text-white font-bold text-xs py-2.5 rounded-lg text-center hover:bg-slate-600 transition no-underline"
+                        >
+                          ✉️ Send Link to Email
+                        </a>
+                        <button onClick={() => copyLink(selectedLead)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs py-2.5 rounded-lg border border-slate-700 transition">
+                          🔗 Copy Link
+                        </button>
+                      </div>
+                      {sentNotice && <p className="text-[10px] text-emerald-400 text-center">{sentNotice}</p>}
+                    </div>
+                  ) : (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                      <p className="text-[10px] text-amber-400 leading-relaxed">
+                        ⚠️ No hosted file yet. Go to <b>Assets &amp; Files</b> and upload the book PDF — it will be stored in Firebase Storage and a shareable download link will appear here for every buyer.
+                      </p>
+                    </div>
                   )}
 
                   {book.type === 'free' && (
@@ -429,7 +527,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                 <label className="text-[10px] uppercase tracking-wider text-amber-400 block mb-3">📄 Book PDF File</label>
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-xs cursor-pointer transition">
-                    Upload PDF
+                    {pdfBusy ? 'Uploading…' : 'Upload PDF to Storage'}
                     <input type="file" accept=".pdf" onChange={handlePdf} className="hidden" />
                   </label>
                   {editBook.customPdf && !/^https?:\/\//i.test(editBook.customPdf) && <span className="text-xs text-emerald-400">✓ PDF file attached</span>}

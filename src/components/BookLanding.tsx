@@ -10,9 +10,10 @@ const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 interface Props {
   book: Book;
   onAdminAccess: () => void;
+  onLeadSubmitted: (all: Lead[]) => void;
 }
 
-export default function BookLanding({ book, onAdminAccess }: Props) {
+export default function BookLanding({ book, onAdminAccess, onLeadSubmitted }: Props) {
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [name, setName] = useState('');
@@ -103,6 +104,8 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
     schedulePush();
+    // Register the lead immediately in global state + push to cloud
+    onLeadSubmitted(allLeads);
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName(''); setEmail(''); setPhone('');

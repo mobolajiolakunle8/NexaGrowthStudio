@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Book, Lead } from './types';
 import { MEGA_ADMIN_PASSCODE_KEY, MEGA_ADMIN_DEFAULT } from './types';
-import { loadBooks, saveBooks } from './storage';
-import { autoSyncBooks, startLiveSync, stopLiveSync, testConnection } from './cloud';
+import { loadBooks, saveBooks, loadLeads } from './storage';
+import { syncBooks, syncLeads, startLiveSync, startLeadSync, stopLiveSync, testConnection } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
@@ -88,6 +88,17 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(false);
   const [lastSyncStr, setLastSyncStr] = useState<string | null>(null);
 
+  // Leads held in state so every admin screen refreshes the moment a
+  // visitor downloads a book on ANY device (previously it only read
+  // localStorage once, so new leads never appeared).
+  const [leads, setLeads] = useState<Lead[]>(() => loadLeads());
+
+  // Called by BookLanding the instant a lead is captured
+  const handleLeadAdded = useCallback((all: Lead[]) => {
+    setLeads(all);
+    void syncLeads(all);
+  }, []);
+
   // ── Live sync across all browsers (real-time WebSocket) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -115,14 +126,14 @@ export default function App() {
     };
   }, []);
 
-  // ── First-load seeding: if Firebase is empty, publish the seed book once ──
+  // ── Live lead sync: leads submitted on any device appear in every admin ──
   useEffect(() => {
-    void (async () => {
-      const cloud = await testConnection();
-      if (!cloud.ok) return;
-      const existing = await autoSyncBooks([]).then(() => null).catch(() => null);
-      void existing;
-    })();
+    const unsub = startLeadSync((cloudLeads) => {
+      setLeads(cloudLeads);
+      try { localStorage.setItem('nexa_leads_v1', JSON.stringify(cloudLeads)); } catch { /* */ }
+      setLastSyncStr(new Date().toISOString());
+    });
+    return () => unsub();
   }, []);
 
   // ── Hash routing ──
@@ -159,7 +170,7 @@ export default function App() {
   const handleBooksChange = useCallback((updated: Book[]) => {
     setBooks(updated);
     saveBooks(updated);
-    autoSyncBooks(updated).catch(() => {});
+    syncBooks(updated).catch(() => {});
   }, []);
 
   const handleUpdateBook = (updated: Book) => {
@@ -188,6 +199,7 @@ export default function App() {
       return (
         <MegaAdmin
           books={books}
+          leads={leads}
           onBooksChange={handleBooksChange}
           onEditBook={book => setView({ type: 'book-admin', book })}
           onViewLanding={handleViewLanding}
@@ -200,14 +212,20 @@ export default function App() {
       return (
         <BookAdmin
           book={view.book}
+          leads={leads.filter(l => l.bookId === view.book.id)}
           onUpdateBook={handleUpdateBook}
+          onLeadUpdated={handleLeadAdded}
           onBack={() => setView({ type: 'mega-admin' })}
         />
       );
     }
     if (view.type === 'landing') {
       return (
-        <BookLanding book={view.book} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
+        <BookLanding
+          book={view.book}
+          onAdminAccess={() => setView({ type: 'book-admin', book: view.book })}
+          onLeadSubmitted={handleLeadAdded}
+        />
       );
     }
 

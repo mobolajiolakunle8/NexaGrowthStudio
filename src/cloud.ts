@@ -1,66 +1,24 @@
-// 🔐 Firebase Cloud Sync Module — Local + Full Automatic Cross-Browser Sync
+// ─────────────────────────────────────────────────────────────────
+// Firebase Realtime Database — Automatic Cross-Browser Sync
+//
+// Data schema (single source of truth):
+//   nexa/books : Book[]   (plain array — admin edits, last-write-wins)
+//   nexa/leads : Lead[]   (plain array — merged by id, never lost)
+//   nexa/meta  : { updatedAt, client }
+// ─────────────────────────────────────────────────────────────────
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getDatabase, ref, get, set, onValue, update } from 'firebase/database';
+import { getDatabase, ref, get, set, onValue } from 'firebase/database';
 import type { Book, Lead } from './types';
 
-// ─── Local storage keys ─────────────────────────────────────
+// ─── Local storage keys ──────────────────────────────────────────
 const LS_BOOKS = 'nexa_books_v1';
 const LS_LEADS = 'nexa_leads_v1';
 const LS_META = 'nexa_cloud_meta';
 
-// Random client identifier so our own echo can be distinguished from remote changes
 const clientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-// Internal flag to suppress the local echo of a cloud write we just performed
-let suppressNextLive = false;
-let pendingSuppressTimer: ReturnType<typeof setTimeout> | null = null;
-
-// ─── Read/write storage (safe in private mode) ────────────────
-export function readLocal(): { books: Book[]; leads: Lead[] } {
-  try {
-    const b = localStorage.getItem(LS_BOOKS);
-    return { books: b ? JSON.parse(b) as Book[] : [], leads: [] };
-  } catch { return { books: [], leads: [] }; }
-}
-
-export function writeLocal(books: Book[], leads: Lead[]): void {
-  try { localStorage.setItem(LS_BOOKS, JSON.stringify(books)); } catch { /* */ }
-  try { localStorage.setItem(LS_LEADS, JSON.stringify(leads)); } catch { /* */ }
-  try { localStorage.setItem(LS_META, JSON.stringify({ at: new Date().toISOString(), client: clientId })); } catch { /* */ }
-}
-
-// ─── Settings (localStorage helpers for MegaAdmin) ─────────────────────────
-export function getEffectiveDbUrl(): string {
-  try { return localStorage.getItem('nexa_cloud_db_url') || ''; } catch { return ''; }
-}
-
-export function setDbUrl(url: string): void {
-  try { localStorage.setItem('nexa_cloud_db_url', url); } catch { /* */ }
-}
-
-export function isSyncEnabled(): boolean {
-  try { return localStorage.getItem('nexa_cloud_sync_enabled') !== 'false'; } catch { return true; }
-}
-
-export function setSyncEnabled(enabled: boolean): void {
-  try { localStorage.setItem('nexa_cloud_sync_enabled', String(enabled)); } catch { /* */ }
-}
-
-export function getLastSync(): string | null {
-  try {
-    const raw = localStorage.getItem(LS_META);
-    if (!raw) return null;
-    const meta = JSON.parse(raw) as { at?: string };
-    return meta.at || null;
-  } catch { return null; }
-}
-
-export function getLastSyncTime(): string | null {
-  return getLastSync();
-}
-
-// ─── Firebase Configuration ────────────────────────────────────
+// ─── Firebase configuration (env-first, fallback for prod) ──────
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCQZpR0XjSVTfbR4kpsT-x9KPMyr9igjMU",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "nexa-growth-studio.firebaseapp.com",
@@ -72,14 +30,17 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-1PPCHGHWH7"
 };
 
-// Safe initialization to avoid duplicate app errors
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+/** Exported so assets.ts can reuse the same initialized app for Storage uploads. */
+export const firebaseApp = app;
+
 const db = getDatabase(app);
-const nexaRef = ref(db, 'nexa');
 const booksRef = ref(db, 'nexa/books');
 const leadsRef = ref(db, 'nexa/leads');
+const metaRef = ref(db, 'nexa/meta');
 
-// ─── Data validation helpers (prevent garbage writes) ────────
+// ─── Validation (guards against corrupt writes) ─────────────────
 function normalizeBookList(value: unknown): Book[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is Book => {
@@ -96,141 +57,249 @@ function normalizeLeadList(value: unknown): Lead[] {
   });
 }
 
-// ─── Firebase single-read ─────────────────────────────────────
+/** Merge two lead lists by id — nothing is ever lost between browsers. */
+function mergeLeads(a: Lead[], b: Lead[]): Lead[] {
+  const map = new Map<string, Lead>();
+  for (const l of a) map.set(l.id, l);
+  for (const l of b) {
+    const existing = map.get(l.id);
+    // Newer status/notes win (keep whichever record has more info)
+    if (!existing || (l.notes && !existing.notes) || l.status !== 'New') map.set(l.id, l);
+  }
+  return Array.from(map.values()).sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime());
+}
+
+// ─── Local storage ───────────────────────────────────────────────
+export function readLocal(): { books: Book[]; leads: Lead[] } {
+  let books: Book[] = [];
+  let leads: Lead[] = [];
+  try { const b = localStorage.getItem(LS_BOOKS); if (b) books = normalizeBookList(JSON.parse(b)); } catch { /* */ }
+  try { const l = localStorage.getItem(LS_LEADS); if (l) leads = normalizeLeadList(JSON.parse(l)); } catch { /* */ }
+  return { books, leads };
+}
+
+export function writeLocal(books: Book[], leads: Lead[]): void {
+  try { localStorage.setItem(LS_BOOKS, JSON.stringify(books)); } catch { /* */ }
+  try { localStorage.setItem(LS_LEADS, JSON.stringify(leads)); } catch { /* */ }
+  try { localStorage.setItem(LS_META, JSON.stringify({ at: new Date().toISOString(), client: clientId })); } catch { /* */ }
+}
+
+// ─── Settings helpers (MegaAdmin display) ───────────────────────
+export function getEffectiveDbUrl(): string {
+  return firebaseConfig.databaseURL;
+}
+
+export function getLastSync(): string | null {
+  try {
+    const raw = localStorage.getItem(LS_META);
+    if (!raw) return null;
+    return (JSON.parse(raw) as { at?: string }).at || null;
+  } catch { return null; }
+}
+
+export function getLastSyncTime(): string | null {
+  return getLastSync();
+}
+
+function markSynced() {
+  try { localStorage.setItem(LS_META, JSON.stringify({ at: new Date().toISOString(), client: clientId })); } catch { /* */ }
+}
+
+// ─── Cloud reads ─────────────────────────────────────────────────
 export async function fetchFromCloud(): Promise<{ books: Book[]; leads: Lead[] } | null> {
   try {
-    const snapshot = await get(nexaRef);
-    if (!snapshot.exists()) return { books: [], leads: [] };
-    const d = snapshot.val() as Record<string, unknown> | null;
-    return { books: normalizeBookList(d?.books), leads: normalizeLeadList(d?.leads) };
+    const [bSnap, lSnap] = await Promise.all([get(booksRef), get(leadsRef)]);
+    return {
+      books: normalizeBookList(bSnap.exists() ? bSnap.val() : []),
+      leads: normalizeLeadList(lSnap.exists() ? lSnap.val() : []),
+    };
   } catch (e) {
-    console.error('fetchFromCloud failed:', e);
+    console.error('[sync] fetchFromCloud failed:', e);
     return null;
   }
 }
 
-/** Legacy alias — supports pullFromCloud() and pullFromCloud(url) */
+/** Legacy alias — MegaAdmin "Load Latest" */
 export async function pullFromCloud(_databaseUrl?: string): Promise<{ books: Book[]; leads: Lead[] } | null> {
   return fetchFromCloud();
 }
 
-// ─── Automatic write: saves changes immediately to all browsers ──
-let autoTimer: ReturnType<typeof setTimeout> | null = null;
+// ─── Cloud writes (automatic, debounced) ─────────────────────────
+let bookTimer: ReturnType<typeof setTimeout> | null = null;
+let leadTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function autoSyncBooks(books: Book[], leads: Lead[] = []): Promise<boolean> {
-  if (autoTimer) clearTimeout(autoTimer);
-  return new Promise<boolean>((resolve) => {
-    autoTimer = setTimeout(async () => {
-      try {
-        suppressNextLive = true;
-        if (pendingSuppressTimer) clearTimeout(pendingSuppressTimer);
-        pendingSuppressTimer = setTimeout(() => { suppressNextLive = false; }, 4000);
+/**
+ * Realtime Database has a ~10MB per-node limit. A base64 PDF inside a book
+ * would blow that limit, the write would fail, and the live listener would
+ * then revert the UI to the older cloud data (making the book "disappear").
+ * So we strip embedded (data:) files from the SYNCED copy only — the admin
+ * keeps them locally, and metadata always syncs so books never vanish.
+ * Hosted https:// links are tiny and always synced.
+ */
+const MAX_SYNC_BYTES = 3_000_000;
 
-        // Write books to their own node so readers who only need books pay less bandwidth
-        await set(booksRef, { books: normalizeBookList(books) });
-        if (leads.length > 0) {
-          await set(leadsRef, { leads: normalizeLeadList(leads) });
-        }
-        await update(nexaRef, { updatedAt: new Date().toISOString(), client: clientId });
-        writeLocal(normalizeBookList(books), normalizeLeadList(leads));
-        resolve(true);
-      } catch (e) {
-        console.error('autoSyncBooks failed:', e);
-        resolve(false);
-      }
-    }, 300);
+function stripEmbeddedFiles(books: Book[]): Book[] {
+  return books.map((b) => {
+    const clone: Book = { ...b };
+    if (clone.customPdf && !/^https?:/i.test(clone.customPdf)) delete clone.customPdf;
+    if (clone.coverImage && !/^https?:/i.test(clone.coverImage)) delete clone.coverImage;
+    return clone;
   });
 }
 
-// ─── Legacy aliases used by old components ─────────────────────
-export async function pushToCloud(books: Book[], leads: Lead[]): Promise<boolean> {
-  return autoSyncBooks(books, leads);
+/** Write the full book list to the cloud. Every browser receives it live. */
+export function syncBooks(books: Book[]): Promise<boolean> {
+  let payload = normalizeBookList(books);
+  // Safety net: never let an embedded file break sync for everyone
+  if (JSON.stringify(payload).length > MAX_SYNC_BYTES) {
+    console.warn('[sync] Payload too large — stripping embedded files so book data still syncs.');
+    payload = stripEmbeddedFiles(payload);
+  }
+  if (bookTimer) clearTimeout(bookTimer);
+  return new Promise<boolean>((resolve) => {
+    bookTimer = setTimeout(async () => {
+      try {
+        await set(booksRef, payload);
+        await set(metaRef, { updatedAt: new Date().toISOString(), client: clientId });
+        const { leads } = readLocal();
+        // Keep the admin's full local copy (with embedded files) locally
+        writeLocal(books, leads);
+        markSynced();
+        resolve(true);
+      } catch (e) {
+        console.error('[sync] syncBooks failed:', e);
+        resolve(false);
+      }
+    }, 250);
+  });
 }
 
-/** Compat alias used by the MegaAdmin settings screen */
+/** Merge local leads with cloud leads by id, then write back. Never loses a lead. */
+export function syncLeads(localLeads: Lead[]): Promise<boolean> {
+  const clean = normalizeLeadList(localLeads);
+  if (leadTimer) clearTimeout(leadTimer);
+  return new Promise<boolean>((resolve) => {
+    leadTimer = setTimeout(async () => {
+      try {
+        const snap = await get(leadsRef);
+        const cloudLeads = normalizeLeadList(snap.exists() ? snap.val() : []);
+        const merged = mergeLeads(cloudLeads, clean);
+        await set(leadsRef, merged);
+        const { books } = readLocal();
+        writeLocal(books, merged);
+        markSynced();
+        resolve(true);
+      } catch (e) {
+        console.error('[sync] syncLeads failed:', e);
+        resolve(false);
+      }
+    }, 250);
+  });
+}
+
+// ─── Legacy compatibility aliases ────────────────────────────────
+export function autoSyncBooks(books: Book[], leads: Lead[] = []): Promise<boolean> {
+  const p1 = syncBooks(books);
+  if (leads.length > 0) void syncLeads(leads);
+  return p1;
+}
+
+export async function pushToCloud(books: Book[], leads: Lead[]): Promise<boolean> {
+  const ok = await syncBooks(books);
+  if (leads.length > 0) await syncLeads(leads);
+  return ok;
+}
+
 export async function pushToCloudUrl(_databaseUrl: string, books: Book[], leads: Lead[]): Promise<boolean> {
-  return autoSyncBooks(books, leads);
+  return pushToCloud(books, leads);
 }
 
 export async function pushLocalToCloud(): Promise<boolean> {
-  const { books } = readLocal();
-  return autoSyncBooks(books);
+  const { books, leads } = readLocal();
+  const ok = await syncBooks(books);
+  if (leads.length > 0) await syncLeads(leads);
+  return ok;
 }
 
-export function schedulePush(delayMs = 500): void {
-  if (autoTimer) clearTimeout(autoTimer);
-  autoTimer = setTimeout(async () => {
-    const { books } = readLocal();
-    await autoSyncBooks(books);
+/** Called after saving a lead locally (BookLanding / BookAdmin). */
+export function schedulePush(delayMs = 400): void {
+  setTimeout(() => {
+    const { leads } = readLocal();
+    void syncLeads(leads);
   }, delayMs);
 }
 
-// ─── Live Sync (real-time across every open browser) ──────────
-let liveUnsub: (() => void) | null = null;
-let liveCb: ((books: Book[], leads: Lead[]) => void) | null = null;
+// ─── Live sync: every open browser updates in real time ─────────
+let bookUnsub: (() => void) | null = null;
+let leadUnsub: (() => void) | null = null;
+let seeded = false;
 
 export function startLiveSync(callback: (books: Book[], leads: Lead[]) => void): () => void {
-  if (liveUnsub) { liveUnsub(); liveUnsub = null; }
-  liveCb = callback;
+  if (bookUnsub) { bookUnsub(); bookUnsub = null; }
 
-  try {
-    liveUnsub = onValue(
-      booksRef,
-      (snap) => {
-        try {
-          if (suppressNextLive) return; // Our own write just echoed back
-
-          const value = snap.val() as Record<string, unknown> | null;
-          const books = normalizeBookList(value?.books);
-          try { localStorage.setItem(LS_META, JSON.stringify({ at: new Date().toISOString(), client: 'remote' })); } catch { /* */ }
-          if (liveCb && books.length > 0) liveCb(books, []);
-        } catch (err) {
-          console.warn('Live sync payload warning:', err);
+  bookUnsub = onValue(
+    booksRef,
+    (snap) => {
+      try {
+        if (!snap.exists()) {
+          // Cloud is empty (first ever run): seed it once from local data.
+          if (!seeded) {
+            seeded = true;
+            const { books } = readLocal();
+            if (books.length > 0) void syncBooks(books);
+          }
+          return;
         }
-      },
-      (error) => console.warn('Live sync error (using local fallback):', error)
-    );
-  } catch (err) {
-    console.warn('startLiveSync listener error:', err);
-  }
+        const books = normalizeBookList(snap.val());
+        markSynced();
+        if (books.length > 0) callback(books, []);
+      } catch (err) {
+        console.warn('[sync] live books warning:', err);
+      }
+    },
+    (error) => console.warn('[sync] live books error (check database rules):', error)
+  );
 
-  return () => { if (liveUnsub) { liveUnsub(); liveUnsub = null; } liveCb = null; };
+  return () => { if (bookUnsub) { bookUnsub(); bookUnsub = null; } };
 }
 
 export function startLeadSync(callback: (leads: Lead[]) => void): () => void {
-  return onValue(leadsRef, snap => {
-    const value = snap.val() as Record<string, unknown> | null;
-    callback(normalizeLeadList(value?.leads));
-  });
+  if (leadUnsub) { leadUnsub(); leadUnsub = null; }
+  leadUnsub = onValue(
+    leadsRef,
+    (snap) => {
+      const leads = normalizeLeadList(snap.exists() ? snap.val() : []);
+      if (leads.length > 0) callback(leads);
+    },
+    (error) => console.warn('[sync] live leads error:', error)
+  );
+  return () => { if (leadUnsub) { leadUnsub(); leadUnsub = null; } };
 }
 
 export function stopLiveSync(): void {
-  if (liveUnsub) { liveUnsub(); liveUnsub = null; }
-  liveCb = null;
+  if (bookUnsub) { bookUnsub(); bookUnsub = null; }
+  if (leadUnsub) { leadUnsub(); leadUnsub = null; }
 }
 
 export function isSyncActiveFn(): boolean {
-  return !!liveUnsub;
+  return !!bookUnsub;
 }
 
-// ─── Connection Test ─────────────────────────────────────────────
+// ─── Connection test ─────────────────────────────────────────────
 export async function testConnection(_databaseUrl?: string): Promise<{ ok: boolean; message: string }> {
   try {
-    await get(nexaRef);
+    await get(metaRef);
     return { ok: true, message: 'Connected to Firebase Realtime Database.' };
   } catch (e) {
-    return { ok: false, message: `Connection failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, message: `Connection failed: ${e instanceof Error ? e.message : String(e)}. Check your database rules are published.` };
   }
 }
 
 export function cancelScheduledPush(): void {
-  if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+  if (bookTimer) { clearTimeout(bookTimer); bookTimer = null; }
+  if (leadTimer) { clearTimeout(leadTimer); leadTimer = null; }
 }
 
-// Cleanup on page unload
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    stopLiveSync();
-    cancelScheduledPush();
-  });
+  window.addEventListener('beforeunload', () => stopLiveSync());
 }

@@ -1,5 +1,7 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "nexa": {
       "books": {
         ".read": true,
@@ -9,15 +11,7 @@
         ".read": true,
         ".write": true
       },
-      "updatedAt": {
-        ".read": true,
-        ".write": true
-      },
-      "client": {
-        ".read": true,
-        ".write": true
-      },
-      "$other": {
+      "meta": {
         ".read": true,
         ".write": true
       }
