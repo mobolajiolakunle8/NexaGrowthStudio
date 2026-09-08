@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf, normalizePhoneForWA } from '../storage';
 import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
@@ -32,11 +32,70 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
+  const buildWhatsAppMessage = (lead: Lead): string => {
+    const link = getDirectDownloadLink();
+    if (link) {
+      return [
+        `✅ Payment confirmed!`,
+        '',
+        `Hi ${lead.name},`,
+        '',
+        `Your payment for "${book.title}" has been confirmed.`,
+        ``,
+        `Click to download your copy now: ${link}`,
+        '',
+        'Thank you for your purchase. Enjoy! 🎉',
+        `— ${book.author}`,
+      ].join('\n');
+    }
+    // An embedded (attached) PDF cannot be clicked from WhatsApp, so we hand
+    // the admin the buyer's WhatsApp open + the book page link they can share,
+    // and fully clear, professional guidance to follow.
+    if (hasEmbeddedPdf()) {
+      return [
+        `✅ Payment confirmed!`,
+        '',
+        `Hi ${lead.name}, your payment for "${book.title}" has been confirmed.`,
+        '',
+        'Download your copy on the official book page here:',
+        `${window.location.origin}${window.location.pathname}#/book/${book.slug}`,
+        '',
+        '(The PDF is attached to that page.)',
+        'Thank you for your purchase. — ' + book.author,
+      ].join('\n');
+    }
+    return [
+      `Hi ${lead.name},`,
+      '',
+      `Your payment for "${book.title}" has been received ✅`,
+      '',
+      'Your download will be sent shortly. Thank you!',
+      `— ${book.author}`,
+    ].join('\n');
+  };
+
   const handleMarkPaid = (id: string) => {
     const paymentConfirmedAt = new Date().toISOString();
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, paid: true, paymentConfirmedAt, status: 'Qualified' as const } : l);
     saveLeads(updated);
+
+    const target = updated.find(l => l.id === id);
+
+    if (target) {
+      const message = buildWhatsAppMessage(target);
+      const digits = normalizePhoneForWA(target.phone);
+      // Opening the customer's WhatsApp with the message pre-filled means the
+      // admin taps Send once and the confirmation + download is delivered in
+      // one action. (WhatsApp requires a delivered media URL, so an attached
+      // PDF is shared via its book page instead.)
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+      // Record that the delivery message was composed/sent via WhatsApp.
+      recordDelivery(target, 'WhatsApp');
+    }
+
+    // recordDelivery (above) already persists deliveredAt + deliveryChannel to
+    // both local and cloud storage, so we only persist the payment fields here.
     void updateLeadInCloud(id, { paid: true, paymentConfirmedAt, status: 'Qualified' });
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true, paymentConfirmedAt, status: 'Qualified' });
   };
@@ -52,8 +111,10 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
 
   const handleSaveBook = () => {
     setSaving(true);
-    onUpdateBook(editBook);
-    setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000); }, 400);
+    const finalBook: Book = { ...editBook, customPdf: manualLinkDraft.trim() ? toDirectDownloadLink(manualLinkDraft) : editBook.customPdf };
+    setEditBook(finalBook);
+    onUpdateBook(finalBook);
+    setTimeout(() => { setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2500); }, 400);
   };
 
   const [coverBusy, setCoverBusy] = useState(false);
@@ -134,6 +195,50 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     return !!link && !/^https?:\/\//i.test(link);
   };
 
+  /**
+   * Converts a normal Google Drive "share" URL into a direct download URL so
+   * customers who receive it on WhatsApp/email get the file, not the preview
+   * page. Non-Drive links are returned untouched.
+   */
+  const toDirectDownloadLink = (raw: string): string => {
+    const url = raw.trim();
+    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+    if (driveMatch) return `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+    const openMatch = url.match(/[?&]id=([^&]+)/);
+    if (openMatch && url.includes('drive.google.com')) return `https://drive.google.com/uc?export=download&id=${openMatch[1]}`;
+    return url;
+  };
+
+  // Manual link box keeps its own draft so typing doesn't fight the save flow.
+  const [manualLinkDraft, setManualLinkDraft] = useState<string>(getDirectDownloadLink());
+
+  // If the book is updated elsewhere (e.g. cloud sync), refresh the draft so
+  // the box always shows the link that is actually saved for this book.
+  useEffect(() => {
+    setManualLinkDraft(getDirectDownloadLink());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editBook.customPdf, book.customPdf]);
+
+  const applyManualLink = () => {
+    const value = manualLinkDraft.trim();
+    if (!value) {
+      setEditBook(prev => ({ ...prev, customPdf: undefined }));
+      setPdfMsg('Delivery link cleared.');
+      return;
+    }
+    if (!/^https?:\/\//i.test(value)) {
+      setPdfMsg('⚠️ That does not look like a valid link — it must start with https://');
+      return;
+    }
+    const direct = toDirectDownloadLink(value);
+    setEditBook(prev => ({ ...prev, customPdf: direct }));
+    setPdfMsg(
+      direct !== value
+        ? '✓ Google Drive link converted to a direct download link and applied. Remember to click "Save Asset Changes".'
+        : '✓ Delivery link applied. Remember to click "Save Asset Changes".'
+    );
+  };
+
   const notifyMissingHostedLink = () => {
     if (hasEmbeddedPdf()) {
       alert('This book has an embedded (attached) PDF, which can only be downloaded in a browser — WhatsApp and email can only carry a link.\n\nUpload the PDF to Google Drive → Share → "Anyone with the link", then paste that link in Assets & Files (or enable Firebase Storage and upload a PDF larger than 1MB there).');
@@ -144,7 +249,9 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
 
   const recordDelivery = (lead: Lead, channel: 'WhatsApp' | 'Email') => {
     const deliveredAt = new Date().toISOString();
-    const changes: Partial<Lead> = { deliveredAt, deliveryChannel: channel, status: 'Contacted' };
+    // We preserve the lead's existing status (e.g. "Qualified" after payment)
+    // and only stamp that the delivery message was composed/sent.
+    const changes: Partial<Lead> = { deliveredAt, deliveryChannel: channel };
     const updated = loadLeads().map(item => item.id === lead.id ? { ...item, ...changes } : item);
     saveLeads(updated);
     void updateLeadInCloud(lead.id, changes);
@@ -620,16 +727,57 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                     </span>
                   </div>
                 )}
-                <div className="mt-3">
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste a PDF link (use for files larger than ~1MB)</label>
+                <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1">
+                    🔗 Delivery link (manual)
+                  </label>
+                  <p className="text-[10.5px] leading-relaxed text-slate-400 mb-3">
+                    Paste or update the book's download link here whenever it changes. This is the exact link customers receive on WhatsApp/email after payment. Google Drive share links are automatically converted to direct download links.
+                  </p>
                   <input
                     type="url"
-                    placeholder="https://drive.google.com/… or https://yoursite.com/book.pdf"
-                    value={editBook.customPdf && /^https?:\/\//i.test(editBook.customPdf) ? editBook.customPdf : ''}
-                    onChange={e => setEditBook(prev => ({ ...prev, customPdf: e.target.value.trim() || undefined }))}
-                    className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                    placeholder="https://drive.google.com/file/d/…/view?usp=drive_link"
+                    value={manualLinkDraft}
+                    onChange={e => setManualLinkDraft(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-white"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">PDFs up to 1MB attach to the book and sync to all browsers automatically. Larger PDFs are uploaded to Firebase Storage when enabled, or you can paste a Google Drive / hosted link.</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={applyManualLink}
+                      className="rounded-lg bg-amber-500 px-4 py-2 text-[11px] font-bold text-slate-950 transition hover:bg-amber-400"
+                    >
+                      Apply link
+                    </button>
+                    {manualLinkDraft.trim() !== (editBook.customPdf || '') && editBook.customPdf && (
+                      <button
+                        type="button"
+                        onClick={() => setManualLinkDraft(editBook.customPdf || '')}
+                        className="rounded-lg border border-slate-700 px-3 py-2 text-[11px] font-medium text-slate-300 transition hover:bg-slate-800"
+                      >
+                        Reset
+                      </button>
+                    )}
+                    {editBook.customPdf && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditBook(prev => ({ ...prev, customPdf: undefined })); setManualLinkDraft(''); setPdfMsg('Delivery link removed.'); }}
+                        className="rounded-lg border border-red-900/50 px-3 py-2 text-[11px] font-medium text-red-400 transition hover:bg-red-900/20"
+                      >
+                        Clear link
+                      </button>
+                    )}
+                  </div>
+                  {editBook.customPdf && /^https?:\/\//i.test(editBook.customPdf) && (
+                    <div className="mt-3 rounded-lg bg-slate-950 border border-slate-800 p-2.5">
+                      <p className="text-[9.5px] uppercase tracking-wider text-slate-500 mb-1">Link currently saved</p>
+                      <code className="text-[10px] text-emerald-400 break-all">{editBook.customPdf}</code>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4">
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or upload a PDF file (up to ~1MB attaches to the book)</label>
+                  <p className="text-[10px] text-slate-500 mt-1">PDFs up to 1MB attach to the book and sync to all browsers automatically. For larger books, use the manual delivery link above (Google Drive works well).</p>
                 </div>
                 {book.type === 'free' && <p className="text-[10px] text-slate-500 mt-2">Visitors download/open this file immediately on form submission.</p>}
                 {book.type === 'paid' && <p className="text-[10px] text-slate-500 mt-2">You manually send this to leads after payment confirmation.</p>}
