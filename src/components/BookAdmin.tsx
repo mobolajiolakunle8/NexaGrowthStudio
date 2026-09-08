@@ -60,6 +60,11 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const [coverMsg, setCoverMsg] = useState<string | null>(null);
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
 
+  /**
+   * Cover upload — embeds a small compressed image straight into the book
+   * record. The existing Realtime-Database catalog sync then delivers it to
+   * every browser (and the homepage) automatically. No Firebase Storage needed.
+   */
   const handleBookCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -67,35 +72,54 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
     setCoverMsg(null);
     try {
       const { compressImageFile, approxDataUrlKB } = await import('../storage');
-      const compressed = await compressImageFile(file, 900, 0.82);
+      // The cover is shown at ~200px wide, so 800px keeps it crisp while
+      // staying tiny (~30-90KB) for instant sync to all browsers.
+      const compressed = await compressImageFile(file, 800, 0.78);
       const kb = approxDataUrlKB(compressed);
-      const blob = await fetch(compressed).then(response => response.blob());
-      const url = await uploadBookAsset(book.id, 'cover', blob, file.name);
-      setEditBook(prev => ({ ...prev, coverImage: url }));
-      setCoverMsg(`Cover optimized to ~${kb}KB and uploaded for all browsers.`);
+      if (kb > 400) {
+        setCoverMsg('That image is still too large to sync reliably. Please use a smaller JPG or PNG (under ~1.5MB).');
+        return;
+      }
+      setEditBook(prev => ({ ...prev, coverImage: compressed }));
+      setCoverMsg(`✓ Cover attached (~${kb}KB). Click "Save Asset Changes" and it will appear here, on the homepage, and on every browser.`);
     } catch {
-      setCoverMsg('Could not process that image. Try a JPG or PNG file.');
+      setCoverMsg('Could not read that image. Please try a standard JPG or PNG file.');
+    } finally {
+      setCoverBusy(false);
+      e.target.value = '';
     }
-    setCoverBusy(false);
-    e.target.value = '';
   };
 
+  /**
+   * PDF upload — embeds PDFs up to 1MB directly in the book record (syncs
+   * everywhere automatically). Larger files are sent to Firebase Storage when
+   * it is enabled, otherwise the admin pastes a permanent hosted link.
+   */
   const handlePdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPdfMsg(null);
     const sizeMB = file.size / 1024 / 1024;
-    if (sizeMB > 25) {
-      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB. Use a file under 25MB or paste a hosted PDF link below.`);
-      e.target.value = '';
-      return;
-    }
+    setPdfMsg(sizeMB <= 1 ? 'Reading PDF…' : 'Uploading PDF to Firebase Storage…');
+
     try {
-      const url = await uploadBookAsset(book.id, 'pdf', file, file.name);
-      setEditBook(prev => ({ ...prev, customPdf: url }));
-      setPdfMsg(`PDF uploaded (${sizeMB.toFixed(1)}MB). The permanent delivery link is ready.`);
+      if (sizeMB <= 1) {
+        // Small PDF → embed in the book record → syncs to all browsers via RTDB.
+        const { fileToDataUrl } = await import('../storage');
+        const dataUrl = await fileToDataUrl(file);
+        setEditBook(prev => ({ ...prev, customPdf: dataUrl }));
+        setPdfMsg(`✓ PDF attached (${sizeMB.toFixed(1)}MB). Click "Save Asset Changes" — it will be available on every browser.`);
+      } else {
+        // Large PDF → try Firebase Storage for a permanent public URL.
+        try {
+          const url = await uploadBookAsset(book.id, 'pdf', file, file.name);
+          setEditBook(prev => ({ ...prev, customPdf: url }));
+          setPdfMsg(`✓ PDF uploaded to Firebase Storage (${sizeMB.toFixed(1)}MB). Permanent delivery link ready.`);
+        } catch {
+          setPdfMsg(`⚠️ Could not reach Firebase Storage (${sizeMB.toFixed(1)}MB file). Upload the PDF to Google Drive → Share → "Anyone with the link", then paste that link in the field below.`);
+        }
+      }
     } catch {
-      setPdfMsg('Could not read that PDF file.');
+      setPdfMsg('Could not read that PDF file. Please try again.');
     }
     e.target.value = '';
   };
@@ -103,6 +127,19 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const getDirectDownloadLink = () => {
     const link = editBook.customPdf || book.customPdf || '';
     return /^https?:\/\//i.test(link) ? link : '';
+  };
+
+  const hasEmbeddedPdf = () => {
+    const link = editBook.customPdf || book.customPdf || '';
+    return !!link && !/^https?:\/\//i.test(link);
+  };
+
+  const notifyMissingHostedLink = () => {
+    if (hasEmbeddedPdf()) {
+      alert('This book has an embedded (attached) PDF, which can only be downloaded in a browser — WhatsApp and email can only carry a link.\n\nUpload the PDF to Google Drive → Share → "Anyone with the link", then paste that link in Assets & Files (or enable Firebase Storage and upload a PDF larger than 1MB there).');
+    } else {
+      alert('Attach a PDF in Assets & Files (then click Save Asset Changes) before sending the book to customers.');
+    }
   };
 
   const recordDelivery = (lead: Lead, channel: 'WhatsApp' | 'Email') => {
@@ -117,7 +154,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const sendPaidBookViaWhatsApp = (lead: Lead) => {
     const link = getDirectDownloadLink();
     if (!link) {
-      alert('Upload the book PDF in Assets & Files, then save the asset changes before sending.');
+      notifyMissingHostedLink();
       return;
     }
     const message = [
@@ -136,7 +173,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const sendPaidBookViaEmail = (lead: Lead) => {
     const link = getDirectDownloadLink();
     if (!link) {
-      alert('Upload the book PDF in Assets & Files, then save the asset changes before sending.');
+      notifyMissingHostedLink();
       return;
     }
     const subject = `Your copy of ${book.title}`;
@@ -157,7 +194,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
   const copyPaidBookLink = async () => {
     const link = getDirectDownloadLink();
     if (!link) {
-      alert('Upload and save the book PDF first.');
+      notifyMissingHostedLink();
       return;
     }
     await navigator.clipboard.writeText(link);
@@ -365,9 +402,13 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                             </p>
                           )}
                         </>
+                      ) : hasEmbeddedPdf() ? (
+                        <p className="text-[11px] leading-relaxed text-amber-400">
+                          This book has an attached PDF (works for in-browser download). For one-click WhatsApp/email delivery after payment, paste a hosted link (e.g. Google Drive → Share → "Anyone with the link") in Assets &amp; Files, or use "Test download" to download the file and forward it manually.
+                        </p>
                       ) : (
                         <p className="text-[11px] leading-relaxed text-amber-400">
-                          No permanent PDF link is available. Upload the PDF in Assets &amp; Files and save the book first.
+                          No PDF has been added yet. Upload the book PDF in Assets &amp; Files (then click Save Asset Changes) so you can send it to customers after payment.
                         </p>
                       )}
                     </div>
@@ -537,7 +578,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                 </div>
                 {coverMsg && <p className="text-[11px] text-emerald-400 mt-2">{coverMsg}</p>}
                 <div className="mt-3">
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste an image link (recommended for all browsers)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste an image link instead</label>
                   <input
                     type="url"
                     placeholder="https://…/cover.jpg"
@@ -545,7 +586,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                     onChange={e => setEditBook(prev => ({ ...prev, coverImage: e.target.value.trim() || undefined }))}
                     className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Uploads are compressed and stored in Firebase Storage, so the cover remains available on every browser.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Uploaded covers are auto-compressed and attached straight to the book — they sync to every browser when you save (no extra setup needed).</p>
                 </div>
               </div>
 
@@ -556,12 +597,31 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                     Upload PDF
                     <input type="file" accept=".pdf" onChange={handlePdf} className="hidden" />
                   </label>
-                  {editBook.customPdf && !/^https?:\/\//i.test(editBook.customPdf) && <span className="text-xs text-emerald-400">✓ PDF file attached</span>}
+                  {editBook.customPdf && (
+                    <span className={`text-xs ${/^https?:\/\//i.test(editBook.customPdf) ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      ✓ PDF ready — {/^https?:\/\//i.test(editBook.customPdf) ? 'hosted link' : 'attached to book'}
+                    </span>
+                  )}
                   {editBook.customPdf && <button onClick={() => setEditBook(prev => ({ ...prev, customPdf: undefined }))} className="text-red-400 text-xs hover:underline">Remove</button>}
                 </div>
-                {pdfMsg && <p className="text-[11px] text-amber-400 mt-2">{pdfMsg}</p>}
+                {pdfMsg && (
+                  <p className={`text-[11px] mt-2 ${pdfMsg.startsWith('✓') ? 'text-emerald-400' : pdfMsg.startsWith('⚠') ? 'text-amber-400' : 'text-slate-400'}`}>{pdfMsg}</p>
+                )}
+                {editBook.customPdf && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => downloadGuidePdf('Preview', { ...editBook })}
+                      className="rounded-lg bg-slate-700 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-600"
+                    >
+                      ⬇ Test download
+                    </button>
+                    <span className="text-[10px] text-slate-500">
+                      Sends this exact file to a lead via the "Send book" buttons once you save.
+                    </span>
+                  </div>
+                )}
                 <div className="mt-3">
-                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste a PDF link (best for big books)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">…or paste a PDF link (use for files larger than ~1MB)</label>
                   <input
                     type="url"
                     placeholder="https://drive.google.com/… or https://yoursite.com/book.pdf"
@@ -569,7 +629,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
                     onChange={e => setEditBook(prev => ({ ...prev, customPdf: e.target.value.trim() || undefined }))}
                     className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">PDFs up to 25MB upload to Firebase Storage. You can also paste a permanent hosted PDF link.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">PDFs up to 1MB attach to the book and sync to all browsers automatically. Larger PDFs are uploaded to Firebase Storage when enabled, or you can paste a Google Drive / hosted link.</p>
                 </div>
                 {book.type === 'free' && <p className="text-[10px] text-slate-500 mt-2">Visitors download/open this file immediately on form submission.</p>}
                 {book.type === 'paid' && <p className="text-[10px] text-slate-500 mt-2">You manually send this to leads after payment confirmation.</p>}
