@@ -147,7 +147,7 @@ export default function PublishingHome({ books, settings }: Props) {
               style={{ borderColor: 'rgba(14,20,32,0.1)' }}
             >
               {[
-                { n: String(published.length).padStart(2, '0'), l: 'Active Playbooks' },
+                { n: String(published.length).padStart(2, '0'), l: 'Active Books' },
                 { n: '100%', l: 'African Realities' },
                 { n: 'Direct', l: 'Instant Delivery' },
               ].map(stat => (
@@ -316,7 +316,7 @@ export default function PublishingHome({ books, settings }: Props) {
                         className="font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.12em] transition-transform duration-200 group-hover:translate-x-1"
                         style={{ color: OCHRE }}
                       >
-                        Open playbook →
+                        Open book →
                       </span>
                     </div>
                   </div>
@@ -391,6 +391,46 @@ export default function PublishingHome({ books, settings }: Props) {
         </div>
       </section>
 
+      {/* ─────────── Sister / General Publishing Website ─────────── */}
+      {settings.otherSiteEnabled && settings.otherSiteUrl.trim() && (
+        <section className="border-b py-20" style={{ borderColor: 'rgba(14,20,32,0.08)' }}>
+          <div className="mx-auto max-w-6xl px-5">
+            <div
+              className="grid items-center gap-8 rounded-3xl border p-8 md:grid-cols-[1.2fr_0.8fr] md:p-12"
+              style={{ borderColor: 'rgba(200,134,42,0.35)', background: 'linear-gradient(135deg, #FFF9EF, #F2EBDD)' }}
+            >
+              <div>
+                <Eyebrow>Also from Nexa Growth Studio</Eyebrow>
+                <h2 className="mt-4 font-[Space_Grotesk] text-[27px] font-bold leading-tight md:text-[38px]">
+                  {settings.otherSiteName}
+                </h2>
+                <p className="mt-4 max-w-xl text-[15px] leading-[1.75]" style={{ color: 'rgba(14,20,32,0.72)' }}>
+                  {settings.otherSiteDescription}
+                </p>
+              </div>
+
+              <div className="md:text-right">
+                <a
+                  href={settings.otherSiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-full px-7 py-4 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95 shadow-lg"
+                  style={{ background: '#0E1420', color: '#FAF7F2' }}
+                >
+                  {settings.otherSiteButtonText} →
+                </a>
+                <p
+                  className="mt-3 font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.14em]"
+                  style={{ color: 'rgba(14,20,32,0.45)' }}
+                >
+                  Opens in a new website
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─────────── Direct Reachout & Inquiries ─────────── */}
       <section className="py-20">
         <div className="mx-auto max-w-6xl px-5">
@@ -411,7 +451,7 @@ export default function PublishingHome({ books, settings }: Props) {
                 className="rounded-full px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95"
                 style={{ background: OCHRE, color: '#0E1420' }}
               >
-                Browse Playbooks
+                Browse Business Books
               </a>
               <a
                 href={`https://wa.me/${settings.contactWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi ${settings.founderName}, I would like to inquire about Nexa Growth Studio.`)}`}

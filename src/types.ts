@@ -89,6 +89,11 @@ export interface SiteSettings {
   catalogueSummary: string;
   contactWhatsapp: string;
   officialEmail: string;
+  otherSiteEnabled: boolean;
+  otherSiteName: string;
+  otherSiteUrl: string;
+  otherSiteDescription: string;
+  otherSiteButtonText: string;
   contactEyebrow: string;
   contactWhatsappCta: string;
   contactEmailCta: string;
@@ -106,8 +111,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   navFounderLabel: 'Behind Nexa',
   heroKicker: 'Ibadan · Nigeria · Est. 2024',
   heroTitle: 'Books that teach business properly.',
-  heroSubtitle: 'We publish practical, field-tested guides for African founders and small-business owners. No theory for theory’s sake — just clear playbooks you can apply the same week you read them.',
-  heroBadgeText: 'Field-tested business playbooks',
+  heroSubtitle: 'We publish practical, field-tested books for African founders and small-business owners. No theory for theory’s sake — just clear books you can apply the same week you read them.',
+  heroBadgeText: 'Field-tested business books',
   heroPrimaryCta: 'Explore Publications',
   heroSecondaryCta: 'Meet the Founder',
   founderName: 'Olakunle Samuel',
@@ -116,7 +121,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   founderPhoto: '',
   founderQuote: 'We write the books we wish we had when we started.',
   founderBioParagraph1: 'Nexa Growth Studio began in Ibadan with a simple frustration: most business books sold in Nigeria were written for foreign economies. The advice didn’t survive contact with our market realities.',
-  founderBioParagraph2: 'So we started researching, testing, and publishing our own playbooks — grounded in Nigerian customer behaviour, realistic cash flow cycles, and practical execution that respects your time.',
+  founderBioParagraph2: 'So we started researching, testing, and publishing our own books — grounded in Nigerian customer behaviour, realistic cash flow cycles, and practical execution that respects your time.',
   founderTags: ['Business Strategy', 'Sales & Conversion', 'Brand Architecture', 'Operations'],
   manifestoEyebrow: 'Our Publishing Standard',
   manifestoHeading: 'Every title has to earn its place on this shelf.',
@@ -124,7 +129,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     {
       number: '01',
       title: 'Written from Practice',
-      description: 'Every playbook is built on real client experiments, real failures, and verified numbers — never recycled internet advice.',
+      description: 'Every book is built on real client experiments, real failures, and verified numbers — never recycled internet advice.',
     },
     {
       number: '02',
@@ -142,11 +147,16 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   catalogueSummary: 'Available now. Delivered directly on WhatsApp or immediate download.',
   contactWhatsapp: '+2349030192034',
   officialEmail: 'nexagrowthstudio.ng@gmail.com',
+  otherSiteEnabled: true,
+  otherSiteName: 'Nexa General Books',
+  otherSiteUrl: '',
+  otherSiteDescription: 'Explore our wider collection — fiction, non-fiction, children’s books, inspirational titles, and general reading.',
+  otherSiteButtonText: 'Visit General Books',
   contactEyebrow: 'Direct Publisher Dispatch',
   contactWhatsappCta: 'Message on WhatsApp',
   contactEmailCta: 'Email the Studio',
   newsletterHeading: 'Be first to read every new release.',
-  newsletterSubtitle: 'New playbooks, free sample chapters, and field notes on scaling Nigerian businesses. Direct to your inbox or WhatsApp, zero spam.',
+  newsletterSubtitle: 'New books, free sample chapters, and field notes on scaling Nigerian businesses. Direct to your inbox or WhatsApp, zero spam.',
   copyrightText: 'Nexa Growth Studio. Published with pride in Ibadan, Nigeria.',
 };
 

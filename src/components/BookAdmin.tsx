@@ -372,7 +372,7 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
                 <div className="flex-1 flex flex-col items-center justify-center p-12 bg-slate-950 rounded-2xl border border-slate-800 text-center">
                   <span className="text-4xl mb-2">📥</span>
                   <p className="text-sm font-semibold text-white">No entries yet</p>
-                  <p className="text-xs text-slate-500 mt-1">When customers request or order this playbook, their records will accumulate here in real time.</p>
+                  <p className="text-xs text-slate-500 mt-1">When customers request or order this book, their records will accumulate here in real time.</p>
                 </div>
               ) : (
                 <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner">
@@ -510,14 +510,14 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-2xl mx-auto space-y-5">
               <div className="flex justify-between items-center pb-3 border-b border-slate-800">
-                <h2 className="font-[Space_Grotesk] text-lg font-bold text-white">Playbook Copy & Messaging</h2>
+                <h2 className="font-[Space_Grotesk] text-lg font-bold text-white">Book Copy & Messaging</h2>
                 <button onClick={handleSaveBook} disabled={saving} className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl transition disabled:opacity-50">
                   {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
 
               {[
-                { label: 'Playbook Title', key: 'title', type: 'input' },
+                { label: 'Book Title', key: 'title', type: 'input' },
                 { label: 'Subtitle / Core Promise', key: 'subtitle', type: 'textarea' },
                 { label: 'Author / Editor Name', key: 'author', type: 'input' },
                 { label: 'Author Role / Studio Affiliation', key: 'authorRole', type: 'input' },

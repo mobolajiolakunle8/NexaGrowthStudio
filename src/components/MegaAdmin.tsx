@@ -24,7 +24,7 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
   subtitle: '',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
-  kicker: 'Free Business Playbook',
+  kicker: 'Free Business Book',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Get your free copy',
   ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
@@ -49,7 +49,7 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   kicker: 'Executive Edition',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Secure your copy',
-  ctaSubtitle: 'Complete payment and receive the permanent playbook link automatically on WhatsApp.',
+  ctaSubtitle: 'Complete payment and receive the permanent book link automatically on WhatsApp.',
   adminWhatsapp: '+2349030192034',
   adminPasscode: 'admin123',
   published: false,
@@ -133,7 +133,7 @@ export default function MegaAdmin({
       subtitle: draft.subtitle || '',
       author: draft.author || settings.founderName,
       authorRole: draft.authorRole || settings.founderRole,
-      kicker: draft.kicker || (bookType === 'free' ? 'Free Business Playbook' : 'Executive Edition'),
+      kicker: draft.kicker || (bookType === 'free' ? 'Free Business Book' : 'Executive Edition'),
       type: bookType,
       whatsInside: draft.whatsInside || [],
       ctaTitle: draft.ctaTitle || 'Get your copy',
@@ -441,7 +441,7 @@ export default function MegaAdmin({
             <div className="flex flex-col items-center justify-center text-center py-20 bg-slate-950 rounded-2xl border border-dashed border-slate-800">
               <span className="text-4xl mb-3">📚</span>
               <h3 className="font-[Space_Grotesk] font-bold text-lg mb-1">No books listed</h3>
-              <p className="text-sm text-slate-400 mb-5 max-w-sm">Create a playbook to launch a landing page and start generating leads.</p>
+              <p className="text-sm text-slate-400 mb-5 max-w-sm">Create a book to launch a landing page and start generating leads.</p>
               <button onClick={() => setCreateOpen(true)} className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition">+ Create First Book</button>
             </div>
           ) : (
@@ -610,7 +610,7 @@ export default function MegaAdmin({
                   value={siteDraft.heroBadgeText}
                   onChange={e => setSiteDraft(p => ({ ...p, heroBadgeText: e.target.value }))}
                   className={inputCls}
-                  placeholder="e.g. Field-tested business playbooks"
+                  placeholder="e.g. Field-tested business books"
                 />
               </div>
               <div>
@@ -878,6 +878,64 @@ export default function MegaAdmin({
             </div>
           </section>
 
+          {/* Sister / General Publishing Website */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">🌐 Other Publishing Website</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Add a button that redirects visitors to your separate website for general books, fiction, children’s books, inspirational titles, and other non-business publications.
+            </p>
+            <label className="flex items-center gap-3 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={siteDraft.otherSiteEnabled}
+                onChange={e => setSiteDraft(p => ({ ...p, otherSiteEnabled: e.target.checked }))}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-900 accent-[#C8862A]"
+              />
+              Show the other website button on the homepage
+            </label>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Website Name</label>
+                <input
+                  type="text"
+                  value={siteDraft.otherSiteName}
+                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteName: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Nexa General Books"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Button Text</label>
+                <input
+                  type="text"
+                  value={siteDraft.otherSiteButtonText}
+                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteButtonText: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Visit General Books"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Full Website URL</label>
+                <input
+                  type="url"
+                  value={siteDraft.otherSiteUrl}
+                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteUrl: e.target.value }))}
+                  className={inputCls}
+                  placeholder="https://your-other-book-website.com"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Description</label>
+                <textarea
+                  rows={2}
+                  value={siteDraft.otherSiteDescription}
+                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteDescription: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
           {/* Contact & Dispatch */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact & Footer Dispatch</h3>
@@ -998,8 +1056,8 @@ export default function MegaAdmin({
 
           {/* Book-level access codes */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">📖 Individual Playbook Access Codes</h2>
-            <p className="text-xs text-slate-400 mb-4">Each playbook has its own admin dashboard passcode and WhatsApp dispatch number.</p>
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">📖 Individual Book Access Codes</h2>
+            <p className="text-xs text-slate-400 mb-4">Each book has its own admin dashboard passcode and WhatsApp dispatch number.</p>
             {books.length === 0 && <p className="text-xs text-slate-500">No books created yet.</p>}
             <div className="space-y-3">
               {books.map(b => (
@@ -1075,12 +1133,12 @@ export default function MegaAdmin({
         </div>
       )}
 
-      {/* Modal: Create Playbook */}
+      {/* Modal: Create Book */}
       {createOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setCreateOpen(false)}>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-xl w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Publication</h3>
-            <p className="text-xs text-slate-400 mb-5">Set up your playbook’s landing page. You can customize all copy later.</p>
+            <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Book</h3>
+            <p className="text-xs text-slate-400 mb-5">Set up your book’s landing page. You can customize all copy later.</p>
 
             <div className="grid grid-cols-2 gap-2 mb-5">
               <button
@@ -1090,7 +1148,7 @@ export default function MegaAdmin({
                   bookType === 'free' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'
                 }`}
               >
-                🆓 Free Playbook
+                🆓 Free Book
               </button>
               <button
                 type="button"
@@ -1099,7 +1157,7 @@ export default function MegaAdmin({
                   bookType === 'paid' ? 'bg-[#C8862A]/20 border-[#C8862A] text-[#C8862A]' : 'bg-slate-800 border-slate-700 text-slate-400'
                 }`}
               >
-                💰 Paid Playbook
+                💰 Paid Book
               </button>
             </div>
 
@@ -1110,7 +1168,7 @@ export default function MegaAdmin({
                   type="text"
                   value={draft.title || ''}
                   onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
-                  placeholder="e.g. The Small Business Sales Playbook"
+                  placeholder="e.g. The Small Business Sales Book"
                   className={inputCls}
                 />
               </div>
@@ -1211,7 +1269,7 @@ export default function MegaAdmin({
                 disabled={creating || !draft.title?.trim()}
                 className="w-full bg-[#C8862A] hover:bg-[#d8963a] disabled:opacity-50 text-slate-950 font-bold text-sm py-3.5 rounded-xl transition shadow-md mt-2"
               >
-                {creating ? 'Creating...' : '🚀 Launch Playbook Page'}
+                {creating ? 'Creating...' : '🚀 Launch Book Page'}
               </button>
             </div>
 

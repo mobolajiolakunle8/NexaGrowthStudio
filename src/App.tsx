@@ -34,12 +34,12 @@ function parseHash(): {
 
 const SEED_BOOK: Book = {
   id: 'seed_sbsp_001',
-  slug: 'small-business-sales-playbook',
-  title: 'The Small Business Sales Playbook',
+  slug: 'small-business-sales-book',
+  title: 'The Small Business Sales Book',
   subtitle: 'A practical, no-fluff guide to closing more sales and growing your business — written for Nigerian small business owners.',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
-  kicker: 'Free Business Playbook',
+  kicker: 'Free Business Book',
   type: 'free',
   whatsInside: [
     'A simple framework for understanding your ideal customer and speaking directly to their needs.',
@@ -56,7 +56,7 @@ const SEED_BOOK: Book = {
     accountName: 'Olakunle Samuel',
     accountNumber: '0123456789',
     bankName: 'GTBank',
-    thankYouMessage: "Thank you for downloading The Small Business Sales Playbook! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
+    thankYouMessage: "Thank you for downloading The Small Business Sales Book! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
     donationMessage: 'Support our mission — donate any amount you wish.',
   },
 };

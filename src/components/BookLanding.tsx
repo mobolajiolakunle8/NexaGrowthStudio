@@ -73,7 +73,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
         `Email: ${nemail}`,
         `Phone: ${nphone}`,
         '',
-        `I would like to purchase this playbook.`,
+        `I would like to purchase this book.`,
         book.payment ? `Price: ${book.payment.currency || '₦'}${book.payment.price?.toLocaleString()}` : '',
         '',
         `Please confirm payment instructions. Thank you!`,
@@ -115,7 +115,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
     if (adminCode === book.adminPasscode) {
       onAdminAccess();
     } else {
-      setAdminErr('Incorrect passcode for this playbook.');
+      setAdminErr('Incorrect passcode for this book.');
     }
   };
 
@@ -147,13 +147,13 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
               <span className={`text-[10px] font-[JetBrains_Mono] uppercase font-bold tracking-widest px-2.5 py-1 rounded-full ${
                 isFree ? 'bg-[#4F6B52]/10 text-[#4F6B52]' : 'bg-[#C8862A]/15 text-[#9A6218]'
               }`}>
-                {isFree ? 'Free Playbook' : priceDisplay}
+                {isFree ? 'Free Book' : priceDisplay}
               </span>
               <button
                 onClick={() => setOpen(true)}
                 className="hidden sm:inline-flex rounded-full bg-[#0E1420] px-4 py-1.5 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.14em] text-[#FAF7F2] hover:bg-[#C8862A] hover:text-[#0E1420] transition-colors"
               >
-                {isFree ? 'Get free copy' : 'Order playbook'}
+                {isFree ? 'Get free copy' : 'Order book'}
               </button>
             </div>
           </div>
@@ -166,7 +166,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
 
           <div className="relative mx-auto max-w-4xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#C8862A]/30 bg-[#C8862A]/10 px-3.5 py-1 text-[10px] font-[JetBrains_Mono] font-semibold uppercase tracking-[0.22em] text-[#C8862A] mb-5">
-              <span>{book.kicker || (isFree ? 'Free Business Playbook' : 'Executive Edition')}</span>
+              <span>{book.kicker || (isFree ? 'Free Business Book' : 'Executive Edition')}</span>
             </div>
 
             <h1 className="font-[Space_Grotesk] font-bold text-[34px] sm:text-[46px] md:text-[56px] leading-[1.08] tracking-[-0.02em] max-w-3xl mx-auto text-white">
@@ -182,7 +182,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
                 onClick={() => { setSent(false); setResult(null); setOpen(true); }}
                 className="rounded-full bg-[#C8862A] px-7 py-3.5 font-[JetBrains_Mono] text-xs font-bold uppercase tracking-[0.16em] text-[#0E1420] hover:scale-105 active:scale-95 transition-all shadow-[0_12px_32px_rgba(200,134,42,0.35)] cursor-pointer"
               >
-                {isFree ? 'Get Free Instant Access →' : `Purchase Playbook — ${priceDisplay} →`}
+                {isFree ? 'Get Free Instant Access →' : `Purchase Book — ${priceDisplay} →`}
               </button>
               <a
                 href="#details"
@@ -210,7 +210,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
           <div className="grid grid-cols-3 gap-3 rounded-2xl border border-[rgba(14,20,32,0.08)] bg-white p-5 text-center shadow-sm mb-14">
             <div>
               <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Format</p>
-              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">PDF Playbook</p>
+              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">PDF Book</p>
             </div>
             <div className="border-x border-[rgba(14,20,32,0.08)]">
               <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Access</p>
@@ -261,7 +261,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
             <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-[#C8862A]/20 blur-3xl" />
             <p className="font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.25em] text-[#C8862A] mb-2">{isFree ? 'Zero Strings Attached' : 'Instant Direct Fulfillment'}</p>
             <h2 className="font-[Space_Grotesk] font-bold text-[28px] md:text-[36px] text-white">
-              {book.ctaTitle || (isFree ? 'Claim your free copy now' : 'Secure your playbook copy')}
+              {book.ctaTitle || (isFree ? 'Claim your free copy now' : 'Secure your book copy')}
             </h2>
             <p className="text-[14px] text-white/70 max-w-md mx-auto mt-3 leading-relaxed">
               {book.ctaSubtitle || (isFree ? 'Tap below and it is yours — read it at your pace with no follow-up required.' : 'Enter your details, confirm payment, and receive the direct download link instantly.')}
@@ -367,7 +367,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
                 )}
 
                 <button onClick={() => { setOpen(false); setSent(false); setResult(null); }} className="mt-5 text-xs font-[JetBrains_Mono] text-[#0E1420]/50 hover:text-[#0E1420] underline">
-                  Back to playbook
+                  Back to book
                 </button>
               </div>
             ) : (
@@ -375,7 +375,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
                 <div className="mb-5">
                   <p className="font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-[0.22em] text-[#C8862A]">{isFree ? 'Instant Access' : 'Secure Order'}</p>
                   <h3 className="font-[Space_Grotesk] text-2xl font-bold text-[#0E1420] mt-1">
-                    {isFree ? 'Download this playbook' : `Order "${book.title}"`}
+                    {isFree ? 'Download this book' : `Order "${book.title}"`}
                   </h3>
                   <p className="text-xs text-[#0E1420]/65 mt-1.5">
                     {isFree ? 'Enter your details below. The PDF is delivered to you immediately.' : `Enter your details to generate your order for ${priceDisplay}.`}
