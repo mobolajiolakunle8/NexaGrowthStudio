@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { Book, Lead, SiteSettings } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
 import { createLeadInCloud } from '../cloud';
 import BookCover from './BookCover';
+import BrandLogo from './BrandLogo';
+import ThemeToggle from './ThemeToggle';
 
 const isValidName = (v: string) => v.trim().length >= 2;
 const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -21,6 +23,27 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('nexa_public_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch { /* use synced default */ }
+    return settings.defaultTheme || 'light';
+  });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('nexa_public_theme');
+      if (saved !== 'light' && saved !== 'dark') setTheme(settings.defaultTheme || 'light');
+    } catch { /* ignore */ }
+  }, [settings.defaultTheme]);
+
+  const dark = theme === 'dark';
+  const toggleTheme = () => {
+    const next = dark ? 'light' : 'dark';
+    setTheme(next);
+    try { localStorage.setItem('nexa_public_theme', next); } catch { /* ignore */ }
+  };
 
   const formComplete = isValidName(name) && isValidEmail(email) && isValidPhone(phone);
 
@@ -135,15 +158,20 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
   const priceDisplay = book.payment ? `${book.payment.currency || '₦'}${book.payment.price?.toLocaleString()}` : '';
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#0E1420] font-[Inter] flex flex-col justify-between selection:bg-[#C8862A] selection:text-[#0E1420]">
+    <div className={`book-site min-h-screen bg-[#FAF7F2] text-[#0E1420] font-[Inter] flex flex-col justify-between selection:bg-[#C8862A] selection:text-[#0E1420] ${dark ? 'book-site-dark' : ''}`}>
       <div>
         {/* Navigation bar */}
-        <header className="border-b border-[rgba(14,20,32,0.08)] bg-[#FAF7F2]/90 backdrop-blur-md sticky top-0 z-30">
+        <header className="book-site-header border-b border-[rgba(14,20,32,0.08)] bg-[#FAF7F2]/90 backdrop-blur-md sticky top-0 z-30">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-            <a href="#/" className="inline-flex items-center gap-2.5 text-xs font-[JetBrains_Mono] uppercase tracking-[0.18em] text-[#0E1420]/70 hover:text-[#C8862A] transition-colors no-underline">
-              <span>← Nexa Growth Studio</span>
+            <a href="#/" className="inline-flex min-w-0 items-center gap-2.5 text-xs text-[#0E1420]/70 hover:text-[#C8862A] transition-colors no-underline">
+              <BrandLogo settings={settings} dark={dark} size="sm" />
+              <span className="hidden min-w-0 leading-tight sm:block">
+                <span className="block truncate font-[Space_Grotesk] text-[12px] font-bold">{settings.studioName}</span>
+                <span className="block font-[JetBrains_Mono] text-[8px] uppercase tracking-[0.16em] opacity-60">Back to catalogue</span>
+              </span>
             </a>
             <div className="flex items-center gap-3">
+              <ThemeToggle dark={dark} onToggle={toggleTheme} compact />
               <span className={`text-[10px] font-[JetBrains_Mono] uppercase font-bold tracking-widest px-2.5 py-1 rounded-full ${
                 isFree ? 'bg-[#4F6B52]/10 text-[#4F6B52]' : 'bg-[#C8862A]/15 text-[#9A6218]'
               }`}>

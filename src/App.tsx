@@ -5,7 +5,10 @@ import {
   MEGA_ADMIN_DEFAULT,
   DEFAULT_SITE_SETTINGS,
   SITE_SETTINGS_STORAGE_KEY,
+  SUPER_ADMIN_PASSCODE_KEY,
+  SUPER_ADMIN_DEFAULT,
 } from './types';
+
 import { loadBooks, saveBooks } from './storage';
 import {
   autoSyncBooks,
@@ -19,30 +22,33 @@ import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
 import PublishingHome from './components/PublishingHome';
-import GeneralPressHome from './components/GeneralPressHome';
+import DeveloperScreen from './components/DeveloperScreen';
+import SuperAdmin from './components/SuperAdmin';
 
-function parseHash(): {
-  bookSlug?: string;
-  megaAdmin?: boolean;
-  bookAdmin?: string;
-  isGeneralPress?: boolean;
-} {
+type Route =
+  | { name: 'home' }
+  | { name: 'landing'; slug: string }
+  | { name: 'book-admin'; slug: string }
+  | { name: 'mega-admin' }
+  | { name: 'super-admin' };
+
+function parseHash(): Route {
   const raw = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
-  if (raw === 'admin' || raw === 'admin/login') return { megaAdmin: true };
-  if (raw === 'general' || raw.startsWith('general/')) return { isGeneralPress: true };
-  if (raw.startsWith('admin/book/')) return { bookAdmin: raw.replace('admin/book/', '') };
-  if (raw.startsWith('book/')) return { bookSlug: raw.replace('book/', '') };
-  return {};
+  if (raw === 'admin' || raw === 'admin/login') return { name: 'mega-admin' };
+  if (raw === 'super' || raw.startsWith('super/')) return { name: 'super-admin' };
+  if (raw.startsWith('admin/book/')) return { name: 'book-admin', slug: raw.replace('admin/book/', '') };
+  if (raw.startsWith('book/')) return { name: 'landing', slug: raw.replace('book/', '') };
+  return { name: 'home' };
 }
 
 const SEED_BOOK: Book = {
   id: 'seed_sbsp_001',
-  slug: 'small-business-sales-playbook',
-  title: 'The Small Business Sales Playbook',
+  slug: 'small-business-sales-book',
+  title: 'The Small Business Sales Book',
   subtitle: 'A practical, no-fluff guide to closing more sales and growing your business — written for Nigerian small business owners.',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
-  kicker: 'Free Business Playbook',
+  kicker: 'Free Book Edition',
   type: 'free',
   whatsInside: [
     'A simple framework for understanding your ideal customer and speaking directly to their needs.',
@@ -50,7 +56,7 @@ const SEED_BOOK: Book = {
     'How to close deals confidently without being pushy — practical guidance for everyday business.',
   ],
   ctaTitle: 'Get your free copy',
-  ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
+  ctaSubtitle: 'Enter your details. The book is delivered to you immediately.',
   adminWhatsapp: '+2349030192034',
   adminPasscode: 'admin123',
   published: true,
@@ -59,27 +65,18 @@ const SEED_BOOK: Book = {
     accountName: 'Olakunle Samuel',
     accountNumber: '0123456789',
     bankName: 'GTBank',
-    thankYouMessage: "Thank you for downloading The Small Business Sales Playbook! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
+    thankYouMessage: 'Thank you for downloading The Small Business Sales Book! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.',
     donationMessage: 'Support our mission — donate any amount you wish.',
   },
 };
-
-type ViewMode =
-  | { type: 'landing'; book: Book }
-  | { type: 'book-admin'; book: Book }
-  | { type: 'mega-admin' }
-  | { type: 'general-press' }
-  | { type: 'none' };
 
 export default function App() {
   const [books, setBooks] = useState<Book[]>(() => {
     try {
       const stored = loadBooks();
-      if (stored && stored.length > 0) {
-        return stored;
-      }
+      if (stored.length) return stored;
     } catch (e) {
-      console.warn('Could not read local books, falling back to seed book', e);
+      console.warn('Local catalog unavailable; seeding', e);
     }
     saveBooks([SEED_BOOK]);
     return [SEED_BOOK];
@@ -93,8 +90,8 @@ export default function App() {
     return DEFAULT_SITE_SETTINGS;
   });
 
-  const [view, setView] = useState<ViewMode>({ type: 'none' });
-  const [megaPasscodeOpen, setMegaPasscodeOpen] = useState(false);
+  const [route, setRoute] = useState<Route>({ name: 'home' });
+
   const [megaCode, setMegaCode] = useState('');
   const [megaErr, setMegaErr] = useState('');
   const [megaPasscode, setMegaPasscode] = useState<string>(() => {
@@ -105,22 +102,31 @@ export default function App() {
     }
   });
 
-  // ── Live sync across all browsers (books, leads, and siteSettings) ──
+  const [megaAuthed, setMegaAuthed] = useState(false);
+  const [superPasscode] = useState<string>(() => {
+    try {
+      return localStorage.getItem(SUPER_ADMIN_PASSCODE_KEY) ?? SUPER_ADMIN_DEFAULT;
+    } catch {
+      return SUPER_ADMIN_DEFAULT;
+    }
+  });
+
+  // ── Realtime sync (catalog, leads, settings) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     try {
-      unsubscribe = startLiveSync((fbooks: Book[], _fleads: Lead[], fsettings: SiteSettings) => {
-        if (Array.isArray(fbooks)) {
-          setBooks(fbooks);
-          saveBooks(fbooks);
+      unsubscribe = startLiveSync((cloudBooks: Book[], _leads: Lead[], cloudSettings: SiteSettings) => {
+        if (Array.isArray(cloudBooks)) {
+          setBooks(cloudBooks);
+          saveBooks(cloudBooks);
         }
-        if (fsettings) {
-          setSiteSettings(fsettings);
-          try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(fsettings)); } catch { /* ignore */ }
+        if (cloudSettings) {
+          setSiteSettings(cloudSettings);
+          try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(cloudSettings)); } catch { /* ignore */ }
         }
       });
     } catch (err) {
-      console.warn('Realtime live sync error fallback:', err);
+      console.warn('Realtime sync unavailable:', err);
     }
 
     testConnection().catch(() => {});
@@ -131,7 +137,7 @@ export default function App() {
     };
   }, []);
 
-  // ── First-load reconciliation ──
+  // ── First-load reconciliation with the cloud ──
   useEffect(() => {
     void (async () => {
       try {
@@ -139,48 +145,20 @@ export default function App() {
         const cloud = await bootstrapCloud(localBooks.length ? localBooks : [SEED_BOOK]);
         setBooks(cloud.books);
         saveBooks(cloud.books);
-        if (cloud.settings) {
-          setSiteSettings(cloud.settings);
-        }
+        if (cloud.settings) setSiteSettings(cloud.settings);
       } catch (error) {
         console.error('Cloud bootstrap failed; using local catalog:', error);
       }
     })();
   }, []);
 
-  // ── Hash routing ──
+  // ── Routing ──
   useEffect(() => {
-    const handleHash = () => {
-      const parsed = parseHash();
-      if (parsed.megaAdmin) {
-        setMegaPasscodeOpen(true);
-        return;
-      }
-      if (parsed.isGeneralPress) {
-        setView({ type: 'general-press' });
-        return;
-      }
-      if (parsed.bookAdmin) {
-        const book = books.find(b => b.slug === parsed.bookAdmin);
-        if (book) {
-          setView({ type: 'book-admin', book });
-          return;
-        }
-      }
-      if (parsed.bookSlug) {
-        const book = books.find(b => b.slug === parsed.bookSlug);
-        if (book) {
-          setView({ type: 'landing', book });
-          return;
-        }
-      }
-      setView({ type: 'none' });
-    };
-
+    const handleHash = () => setRoute(parseHash());
     handleHash();
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
-  }, [books]);
+  }, []);
 
   const handleBooksChange = useCallback((updated: Book[]) => {
     setBooks(updated);
@@ -195,16 +173,14 @@ export default function App() {
   }, []);
 
   const handleUpdateBook = (updated: Book) => {
-    const newBooks = books.map(b => b.id === updated.id ? updated : b);
-    handleBooksChange(newBooks);
-    setView({ type: 'book-admin', book: updated });
+    handleBooksChange(books.map(b => (b.id === updated.id ? updated : b)));
+    setRoute({ name: 'book-admin', slug: updated.slug });
   };
 
   const handleMegaLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (megaCode === megaPasscode) {
-      setView({ type: 'mega-admin' });
-      setMegaPasscodeOpen(false);
+      setMegaAuthed(true);
       setMegaCode('');
       setMegaErr('');
     } else {
@@ -212,78 +188,141 @@ export default function App() {
     }
   };
 
-  const handleMegaPasscodeChanged = (next: string) => setMegaPasscode(next);
-  const handleViewLanding = (book: Book) => { window.location.hash = `/book/${book.slug}`; };
+  const gotoHome = () => { window.location.hash = ''; };
+
+  /* ── Site gating ──
+     The public sees a maintenance screen when the site is deactivated or in
+     developer mode. The Super Admin console lets the publisher preview it. */
+  const siteActive = siteSettings.siteActive !== false;
+  const siteDev = siteSettings.siteDeveloper === true;
+  const devPreview = sessionStorage.getItem('nexa_dev_preview') === '1';
 
   const renderMain = () => {
-    if (view.type === 'mega-admin') {
+    // Super Admin console
+    if (route.name === 'super-admin') {
+      return (
+        <SuperAdmin
+          settings={siteSettings}
+          superPasscode={superPasscode}
+          onSettingsChange={handleSettingsChange}
+          onExit={gotoHome}
+        />
+      );
+    }
+
+    // Mega Admin (content management)
+    if (route.name === 'mega-admin') {
+      if (!megaAuthed) {
+        return (
+          <div className="grid min-h-screen place-items-center px-6 font-[Inter]" style={{ background: '#0E1420' }}>
+            <div className="w-full max-w-sm rounded-3xl border border-[#C8862A]/30 p-8 text-white">
+              <div className="flex items-center gap-2.5 mb-1">
+                <span className="grid h-9 w-9 place-items-center rounded-xl font-[Space_Grotesk] text-sm font-black" style={{ background: '#C8862A', color: '#0E1420' }}>N</span>
+                <h3 className="font-[Space_Grotesk] text-lg font-bold">Publishing HQ Access</h3>
+              </div>
+              <p className="mb-5 text-xs text-white/60">Enter the admin passcode to edit books and front-page content.</p>
+              <form onSubmit={handleMegaLogin} className="flex flex-col gap-3">
+                <input
+                  required
+                  type="password"
+                  placeholder="Enter passcode"
+                  value={megaCode}
+                  onChange={e => setMegaCode(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center font-mono text-sm tracking-widest text-white focus:border-[#C8862A] focus:outline-none"
+                  autoFocus
+                />
+                {megaErr && <p className="text-center text-xs text-red-400">{megaErr}</p>}
+                <button type="submit" className="rounded-full bg-[#C8862A] py-3 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-wider text-[#0E1420] transition-transform hover:scale-[1.02]">
+                  Unlock Admin Console
+                </button>
+              </form>
+              <button onClick={gotoHome} className="mt-5 w-full font-[JetBrains_Mono] text-[10px] uppercase tracking-wider text-white/40 hover:text-white/70">
+                ← Back to website
+              </button>
+            </div>
+          </div>
+        );
+      }
       return (
         <MegaAdmin
           books={books}
           settings={siteSettings}
           onBooksChange={handleBooksChange}
           onSettingsChange={handleSettingsChange}
-          onEditBook={book => setView({ type: 'book-admin', book })}
-          onViewLanding={handleViewLanding}
+          onEditBook={book => setRoute({ name: 'book-admin', slug: book.slug })}
+          onViewLanding={book => { window.location.hash = `/book/${book.slug}`; }}
           megaPasscode={megaPasscode}
-          onMegaPasscodeChanged={handleMegaPasscodeChanged}
+          onMegaPasscodeChanged={setMegaPasscode}
         />
-      );
-    }
-    if (view.type === 'book-admin') {
-      return (
-        <BookAdmin
-          book={view.book}
-          officialEmail={siteSettings.officialEmail}
-          onUpdateBook={handleUpdateBook}
-          onBack={() => setView({ type: 'mega-admin' })}
-        />
-      );
-    }
-    if (view.type === 'landing') {
-      return (
-        <BookLanding book={view.book} settings={siteSettings} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
       );
     }
 
-    if (view.type === 'general-press') {
-      return <GeneralPressHome books={books} settings={siteSettings} />;
+    // Book-level admin
+    if (route.name === 'book-admin') {
+      const book = books.find(b => b.slug === route.slug);
+      if (!book) return <NotFound onBack={gotoHome} />;
+      return (
+        <BookAdmin
+          book={book}
+          officialEmail={siteSettings.officialEmail}
+          onUpdateBook={handleUpdateBook}
+          onBack={() => setRoute({ name: 'mega-admin' })}
+        />
+      );
+    }
+
+    // Individual book landing page
+    if (route.name === 'landing') {
+      const book = books.find(b => b.slug === route.slug);
+      if (!book) return <NotFound onBack={gotoHome} />;
+      return (
+        <BookLanding
+          book={book}
+          settings={siteSettings}
+          onAdminAccess={() => setRoute({ name: 'book-admin', slug: book.slug })}
+        />
+      );
+    }
+
+    // Home (single publishing-house website)
+    if (!devPreview && !siteActive) {
+      return (
+        <DeveloperScreen
+          siteName={siteSettings.studioName}
+          notice="This website is temporarily unavailable. Please check back soon."
+          onExit={gotoHome}
+        />
+      );
+    }
+    if (!devPreview && siteDev) {
+      return (
+        <DeveloperScreen
+          siteName={siteSettings.studioName}
+          notice={siteSettings.developerNotice || DEFAULT_SITE_SETTINGS.developerNotice!}
+          onExit={gotoHome}
+        />
+      );
     }
 
     return <PublishingHome books={books} settings={siteSettings} />;
   };
 
-  return (
-    <>
-      {renderMain()}
+  return <>{renderMain()}</>;
+}
 
-      {megaPasscodeOpen && (
-        <div className="fixed inset-0 z-50 bg-[#0E1420]/80 backdrop-blur-sm flex items-center justify-center px-6" onClick={() => setMegaPasscodeOpen(false)}>
-          <div className="bg-[#0E1420] border border-[#C8862A]/30 text-white rounded-3xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="bg-[#C8862A] text-slate-950 font-black text-sm w-8 h-8 rounded-xl flex items-center justify-center font-[Space_Grotesk]">N</span>
-              <h3 className="font-[Space_Grotesk] text-lg font-bold text-white">Publishing HQ Access</h3>
-            </div>
-            <p className="text-xs text-white/60 mb-5">Enter the executive passcode to unlock the studio console.</p>
-            <form onSubmit={handleMegaLogin} className="flex flex-col gap-3">
-              <input 
-                required 
-                type="password" 
-                placeholder="Enter passcode" 
-                value={megaCode} 
-                onChange={e => setMegaCode(e.target.value)} 
-                className="bg-white/5 border border-white/15 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-[#C8862A] text-center tracking-widest font-mono" 
-                autoFocus 
-              />
-              {megaErr && <p className="text-xs text-red-400 text-center">{megaErr}</p>}
-              <button type="submit" className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs py-3 rounded-full mt-1 transition font-[JetBrains_Mono] uppercase tracking-wider">
-                Unlock HQ Console
-              </button>
-            </form>
-            <button onClick={() => setMegaPasscodeOpen(false)} className="absolute top-5 right-5 text-white/40 hover:text-white">✕</button>
-          </div>
-        </div>
-      )}
-    </>
+function NotFound({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-6 text-center font-[Inter]" style={{ background: '#0E1420' }}>
+      <div>
+        <p className="font-[JetBrains_Mono] text-[10px] uppercase tracking-[0.28em]" style={{ color: '#C8862A' }}>404</p>
+        <h1 className="mt-3 font-[Space_Grotesk] text-2xl font-bold text-white">That page has moved</h1>
+        <button
+          onClick={onBack}
+          className="mt-6 rounded-full bg-[#C8862A] px-6 py-3 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] text-[#0E1420]"
+        >
+          ← Back to website
+        </button>
+      </div>
+    </div>
   );
 }

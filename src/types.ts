@@ -27,8 +27,8 @@ export interface Book {
   authorRole: string;
   kicker: string;
   type: BookType;
-  category?: BookCategory; // 'business' or 'general' (for the General Press)
-  genre?: string; // e.g. Fiction, Memoir, Poetry, Life & Faith, Leadership
+  category?: BookCategory; // legacy field retained for existing records
+  genre?: string; // legacy field retained for existing records
   price?: number;
   currency?: string;
   coverImage?: string;
@@ -63,6 +63,8 @@ export interface SiteSettings {
   studioName: string;
   studioTagline: string;
   location: string;
+  logoImage?: string;
+  defaultTheme?: 'light' | 'dark';
   navCatalogueLabel: string;
   navManifestoLabel: string;
   navFounderLabel: string;
@@ -99,17 +101,22 @@ export interface SiteSettings {
   newsletterSubtitle: string;
   copyrightText: string;
 
-  // General Books Press settings
-  generalPressName?: string;
-  generalPressTagline?: string;
-  generalPressHeading?: string;
-  generalPressSubtitle?: string;
+  // External "General Books" website (a separate, different website)
+  generalBooksUrl?: string;
+  generalBooksLabel?: string;
+
+  // Site activation & developer mode (controlled by the Super Admin)
+  siteActive?: boolean;
+  siteDeveloper?: boolean;
+  developerNotice?: string;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   studioName: 'Nexa Growth Studio',
   studioTagline: 'Independent Publishing & Growth Lab',
   location: 'Ibadan, Nigeria',
+  logoImage: '',
+  defaultTheme: 'light',
   navCatalogueLabel: 'Business Library',
   navManifestoLabel: 'Standard',
   navFounderLabel: 'Behind Nexa',
@@ -158,13 +165,19 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   newsletterSubtitle: 'New books, free sample chapters, and field notes on scaling Nigerian businesses. Direct to your inbox or WhatsApp, zero spam.',
   copyrightText: 'Nexa Growth Studio. Published with pride in Ibadan, Nigeria.',
 
-  // General Books Press defaults
-  generalPressName: 'Nexa General Press',
-  generalPressTagline: 'Literature, Thought & Contemporary Voices',
-  generalPressHeading: 'Stories, Memoirs & Ideas Beyond Business.',
-  generalPressSubtitle: 'From memoirs and creative non-fiction to cultural essays, faith, poetry, and lifestyle. A dedicated imprint for powerful African storytelling and thought-provoking books.',
+  // External "General Books" website (a separate, different website)
+  generalBooksUrl: '',
+  generalBooksLabel: 'General Books',
+
+  // Site activation & developer mode defaults
+  siteActive: true,
+  siteDeveloper: false,
+  developerNotice: 'We are currently upgrading this section of our publishing house. New editions are being prepared — please check back shortly.',
 };
 
+export const SUPER_ADMIN_PASSCODE_KEY = 'nexa_super_admin_passcode';
+export const SUPER_ADMIN_DEFAULT = 'nexadev2026';
+export const SUPER_ADMIN_AUTHED_KEY = 'nexa_super_admin_authed';
 export const MEGA_ADMIN_PASSCODE_KEY = 'nexa_mega_admin_passcode';
 export const BOOKS_STORAGE_KEY = 'nexa_books_v1';
 export const LEADS_STORAGE_KEY = 'nexa_leads_v1';

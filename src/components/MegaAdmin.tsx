@@ -6,6 +6,7 @@ import {
   getEffectiveDbUrl,
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync
 } from '../cloud';
+import BrandLogo from './BrandLogo';
 
 interface Props {
   books: Book[];
@@ -20,13 +21,11 @@ interface Props {
 
 const EMPTY_FREE_BOOK = (): Partial<Book> => ({
   type: 'free',
-  category: 'business',
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
   kicker: 'Free Book Edition',
-  genre: 'Business & Strategy',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Get your free copy',
   ctaSubtitle: 'Enter your details. The book is delivered to you immediately.',
@@ -44,13 +43,11 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
 
 const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   type: 'paid',
-  category: 'business',
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
   kicker: 'Executive Edition',
-  genre: 'Business & Strategy',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Secure your copy',
   ctaSubtitle: 'Complete payment and receive the permanent book link automatically on WhatsApp.',
@@ -90,6 +87,8 @@ export default function MegaAdmin({
   const [savingFrontpage, setSavingFrontpage] = useState(false);
   const [frontpageMsg, setFrontpageMsg] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState('');
 
   useEffect(() => {
     setSiteDraft(settings);
@@ -139,8 +138,6 @@ export default function MegaAdmin({
       authorRole: draft.authorRole || settings.founderRole,
       kicker: draft.kicker || (bookType === 'free' ? 'Free Book Edition' : 'Published Edition'),
       type: bookType,
-      category: draft.category || 'business',
-      genre: draft.genre || (draft.category === 'general' ? 'General Literature' : 'Business & Strategy'),
       whatsInside: draft.whatsInside || [],
       ctaTitle: draft.ctaTitle || 'Get your copy',
       ctaSubtitle: draft.ctaSubtitle || '',
@@ -240,6 +237,72 @@ export default function MegaAdmin({
     } finally {
       setUploadingPhoto(false);
       e.target.value = '';
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFrontpageMsg('Please choose an SVG, PNG, JPG, or WebP logo file.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFrontpageMsg('Please choose a logo smaller than 5MB.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingLogo(true);
+    const instantPreview = URL.createObjectURL(file);
+    setLogoPreview(instantPreview);
+    setFrontpageMsg('Publishing logo…');
+    try {
+      const { approxDataUrlKB, compressImageFile, fileToDataUrl } = await import('../storage');
+      // Preserve SVG and already-small files; optimize larger raster artwork.
+      const logo = file.type === 'image/svg+xml' || file.size <= 300 * 1024
+        ? await fileToDataUrl(file)
+        : await compressImageFile(file, 700, 0.84);
+      const sizeKB = approxDataUrlKB(logo);
+      if (sizeKB > 650) throw new Error('The optimized logo is too large. Use an SVG or a smaller transparent PNG.');
+
+      // Update the preview first, then immediately broadcast the same value.
+      const updated = { ...siteDraft, logoImage: logo };
+      setSiteDraft(updated);
+      await onSettingsChange(updated);
+      setFrontpageMsg(`✓ Logo published (${sizeKB}KB) and synchronized across every browser.`);
+    } catch (error) {
+      setFrontpageMsg(`Logo upload failed: ${error instanceof Error ? error.message : 'Please try another image.'}`);
+    } finally {
+      URL.revokeObjectURL(instantPreview);
+      setLogoPreview('');
+      setUploadingLogo(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeLogo = async () => {
+    const updated = { ...siteDraft, logoImage: '' };
+    setSiteDraft(updated);
+    setUploadingLogo(true);
+    try {
+      await onSettingsChange(updated);
+      setFrontpageMsg('✓ Logo removed. The default Nexa mark is now live on every browser.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const setDefaultTheme = async (mode: 'light' | 'dark') => {
+    const updated = { ...siteDraft, defaultTheme: mode };
+    setSiteDraft(updated);
+    setFrontpageMsg(`Publishing ${mode} mode as the website default…`);
+    try {
+      await onSettingsChange(updated);
+      setFrontpageMsg(`✓ ${mode === 'light' ? 'Light' : 'Dark'} mode is now the default across browsers.`);
+    } catch (error) {
+      setFrontpageMsg(`Theme update failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -363,7 +426,7 @@ export default function MegaAdmin({
       <header className="bg-slate-950 border-b border-slate-800 px-6 py-4 shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#C8862A] flex items-center justify-center text-slate-950 font-black text-lg font-[Space_Grotesk]">N</div>
+            <BrandLogo settings={settings} dark />
             <div>
               <h1 className="font-[Space_Grotesk] font-bold text-lg tracking-tight">Nexa Publishing HQ</h1>
               <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Executive Admin Console</p>
@@ -538,6 +601,56 @@ export default function MegaAdmin({
           {/* Studio Brand Info */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">🏛️ Studio Identity</h3>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="flex flex-wrap items-center gap-5">
+                {logoPreview || siteDraft.logoImage ? (
+                  <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-2xl border border-slate-700 bg-white p-2 shadow-lg">
+                    <img src={logoPreview || siteDraft.logoImage} alt="Logo preview" className="h-full w-full object-contain" />
+                  </span>
+                ) : (
+                  <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-[#C8862A] font-[Space_Grotesk] text-2xl font-black text-[#0E1420] shadow-lg">N</span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <label className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Official Website Logo</label>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    Upload SVG, PNG, JPG, or WebP. The preview changes immediately and the logo is automatically saved to Firebase for all browsers.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <label className={`inline-flex cursor-pointer items-center rounded-xl bg-[#C8862A] px-4 py-2 text-xs font-bold text-[#0E1420] transition hover:bg-[#D89A3E] ${uploadingLogo ? 'pointer-events-none opacity-60' : ''}`}>
+                      {uploadingLogo ? 'Publishing…' : siteDraft.logoImage ? 'Replace Logo' : 'Upload Logo'}
+                      <input type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                    {siteDraft.logoImage ? (
+                      <button type="button" onClick={() => void removeLogo()} disabled={uploadingLogo} className="rounded-xl border border-red-900/50 px-4 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-900/20 disabled:opacity-50">Remove Logo</button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <label className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Default Website Theme</label>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                This default is synchronized across browsers. Visitors can still switch themes for their own device.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {(['light', 'dark'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => void setDefaultTheme(mode)}
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      (siteDraft.defaultTheme || 'light') === mode
+                        ? 'border-[#C8862A] bg-[#C8862A]/15 text-[#E0B27A]'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="block font-[Space_Grotesk] text-sm font-bold capitalize">{mode} mode</span>
+                    <span className="mt-0.5 block text-[10px] opacity-70">{mode === 'light' ? 'Warm archival paper' : 'Deep ink, reduced glare'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Publishing House Name</label>
@@ -616,7 +729,7 @@ export default function MegaAdmin({
                   value={siteDraft.heroBadgeText}
                   onChange={e => setSiteDraft(p => ({ ...p, heroBadgeText: e.target.value }))}
                   className={inputCls}
-                  placeholder="e.g. Field-tested business playbooks"
+                  placeholder="e.g. Field-tested business books"
                 />
               </div>
               <div>
@@ -964,51 +1077,33 @@ export default function MegaAdmin({
             </div>
           </section>
 
-          {/* General Books Press Imprint Settings */}
+          {/* External General Books website */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
             <div>
-              <h3 className="font-[Space_Grotesk] font-bold text-base text-[#E5A99B]">📖 Nexa General Press (Secondary Imprint)</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Customize the branding for your non-business publishing house (#/general).</p>
+              <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">📚 General Books Website</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Link a separate website for fiction, memoirs and other non-business books. A button on this site redirects visitors there.
+              </p>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Imprint Name</label>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Website URL</label>
                 <input
-                  type="text"
-                  value={siteDraft.generalPressName || ''}
-                  onChange={e => setSiteDraft(p => ({ ...p, generalPressName: e.target.value }))}
+                  type="url"
+                  value={siteDraft.generalBooksUrl || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalBooksUrl: e.target.value }))}
                   className={inputCls}
-                  placeholder="Nexa General Press"
+                  placeholder="https://your-other-website.com"
                 />
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Tagline</label>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Button Label</label>
                 <input
                   type="text"
-                  value={siteDraft.generalPressTagline || ''}
-                  onChange={e => setSiteDraft(p => ({ ...p, generalPressTagline: e.target.value }))}
+                  value={siteDraft.generalBooksLabel || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalBooksLabel: e.target.value }))}
                   className={inputCls}
-                  placeholder="Literature, Memoirs &amp; Contemporary Voices"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Homepage Headline</label>
-                <input
-                  type="text"
-                  value={siteDraft.generalPressHeading || ''}
-                  onChange={e => setSiteDraft(p => ({ ...p, generalPressHeading: e.target.value }))}
-                  className={inputCls}
-                  placeholder="Stories, Memoirs &amp; Ideas Beyond Business."
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Homepage Subtitle / Description</label>
-                <textarea
-                  rows={3}
-                  value={siteDraft.generalPressSubtitle || ''}
-                  onChange={e => setSiteDraft(p => ({ ...p, generalPressSubtitle: e.target.value }))}
-                  className={inputCls}
-                  placeholder="Describe your general publishing catalogue..."
+                  placeholder="General Books"
                 />
               </div>
             </div>
@@ -1131,56 +1226,12 @@ export default function MegaAdmin({
         </div>
       )}
 
-      {/* Modal: Create Playbook */}
+      {/* Modal: Create Book */}
       {createOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setCreateOpen(false)}>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-xl w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
             <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Publication</h3>
             <p className="text-xs text-slate-400 mb-5">Set up your book’s landing page. You can customize all copy later.</p>
-
-            {/* Imprint Switcher (Business Books vs General Press Books) */}
-            <div className="mb-4">
-              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1.5 font-mono">Publishing Imprint / Category *</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDraft(p => ({ ...p, category: 'business' }))}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left ${
-                    (draft.category || 'business') === 'business'
-                      ? 'bg-[#C8862A]/20 border-[#C8862A] text-[#C8862A]'
-                      : 'bg-slate-800 border-slate-700 text-slate-400'
-                  }`}
-                >
-                  🏢 Nexa Business Books
-                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Strategy, sales, growth</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDraft(p => ({ ...p, category: 'general', genre: p.genre || 'Memoir & Biography' }))}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left ${
-                    draft.category === 'general'
-                      ? 'bg-[#8A2846]/30 border-[#8A2846] text-[#E5A99B]'
-                      : 'bg-slate-800 border-slate-700 text-slate-400'
-                  }`}
-                >
-                  📖 Nexa General Press
-                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Literature, memoirs, ideas</span>
-                </button>
-              </div>
-            </div>
-
-            {draft.category === 'general' && (
-              <div className="mb-4">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Genre / Classification</label>
-                <input
-                  type="text"
-                  value={draft.genre || ''}
-                  onChange={e => setDraft(p => ({ ...p, genre: e.target.value }))}
-                  placeholder="e.g. Memoir &amp; Biography, Fiction, Life &amp; Faith, Poetry"
-                  className={inputCls}
-                />
-              </div>
-            )}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
               <button
@@ -1210,7 +1261,7 @@ export default function MegaAdmin({
                   type="text"
                   value={draft.title || ''}
                   onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
-                  placeholder="e.g. The Small Business Sales Playbook"
+                  placeholder="e.g. The Small Business Sales Book"
                   className={inputCls}
                 />
               </div>
