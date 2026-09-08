@@ -54,6 +54,7 @@ export interface Lead {
   status: 'New' | 'In Progress' | 'Contacted' | 'Qualified' | 'Unqualified';
   paid?: boolean;
   paymentConfirmedAt?: string;
+  paymentProofUrl?: string;
   deliveredAt?: string;
   deliveryChannel?: 'WhatsApp' | 'Email';
   notes?: string;

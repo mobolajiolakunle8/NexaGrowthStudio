@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf, normalizePhoneForWA } from '../storage';
 import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
+import { PaymentProofUpload } from './PaymentProofUpload';
 
 interface Props {
   book: Book;
@@ -424,6 +425,17 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
                     <div><label className="text-[10px] uppercase tracking-wider text-slate-400 block font-mono">Email Address</label><a href={`mailto:${selectedLead.email}`} className="text-[#C8862A] hover:underline break-all">{selectedLead.email}</a></div>
                     <div><label className="text-[10px] uppercase tracking-wider text-slate-400 block font-mono">Phone Number</label><a href={`tel:${selectedLead.phone}`} className="text-[#C8862A] hover:underline font-mono">{selectedLead.phone}</a></div>
                     <div><label className="text-[10px] uppercase tracking-wider text-slate-400 block font-mono">Timestamp</label><span className="text-slate-400 text-xs font-mono">{new Date(selectedLead.date).toLocaleString()}</span></div>
+
+                    <PaymentProofUpload
+                      existingUrl={(selectedLead as any).paymentProofUrl}
+                      onUploadComplete={(proofUrl) => {
+                        if (!proofUrl) return;
+                        const updated = loadLeads().map(l => l.id === selectedLead.id ? { ...l, paymentProofUrl: proofUrl } : l);
+                        saveLeads(updated);
+                        void updateLeadInCloud(selectedLead.id, { paymentProofUrl: proofUrl });
+                        setSelectedLead({ ...selectedLead, paymentProofUrl: proofUrl } as any);
+                      }}
+                    />
                   </div>
 
                   <div>

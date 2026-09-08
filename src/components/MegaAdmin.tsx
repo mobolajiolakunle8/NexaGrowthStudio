@@ -7,6 +7,7 @@ import {
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync
 } from '../cloud';
 import BrandLogo from './BrandLogo';
+import LeadDashboard from './LeadDashboard';
 
 interface Props {
   books: Book[];
@@ -167,6 +168,20 @@ export default function MegaAdmin({
     const updated = books.map(b => b.id === id ? { ...b, published: !b.published } : b);
     onBooksChange(updated);
     saveBooks(updated);
+  };
+
+  const handleTogglePin = (book: Book) => {
+    // pin-to-top toggle synced across all visitors and browsers automatically
+    const updated = books.map(b => {
+      const isPinned = Boolean((b as any).pinned);
+      return b.id === book.id ? { ...b, pinned: !isPinned } as any : b;
+    });
+    onBooksChange(updated);
+    saveBooks(updated);
+    alert((book as any).pinned
+      ? `Removed "${book.title}" from front-page featured/reserved slot.`
+      : `Pinned "${book.title}" to the top of the front-page catalogue.`
+    );
   };
 
   /* ── Save Frontpage Edits ── */
@@ -415,8 +430,7 @@ export default function MegaAdmin({
     e.target.value = '';
   };
 
-  const totalLeads = allLeads.length;
-  const totalPaid = allLeads.filter(l => l.paid).length;
+  // LeadDashboard renders local lead analytics, duplicates and trends internally.
 
   const inputCls = 'w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:border-[#C8862A] text-white transition-colors';
 
@@ -476,26 +490,9 @@ export default function MegaAdmin({
       {/* TAB 1: BOOKS */}
       {mainTab === 'books' && (
         <div className="max-w-6xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs text-slate-400 block font-mono uppercase">Total Books</span>
-              <span className="text-2xl font-bold text-white font-[Space_Grotesk] mt-1 block">{books.length}</span>
-            </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs text-slate-400 block font-mono uppercase">Published</span>
-              <span className="text-2xl font-bold text-emerald-400 font-[Space_Grotesk] mt-1 block">{books.filter(b => b.published).length}</span>
-            </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs text-slate-400 block font-mono uppercase">Total Leads</span>
-              <span className="text-2xl font-bold text-[#C8862A] font-[Space_Grotesk] mt-1 block">{totalLeads}</span>
-            </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
-              <span className="text-xs text-slate-400 block font-mono uppercase">Paid Orders</span>
-              <span className="text-2xl font-bold text-blue-400 font-[Space_Grotesk] mt-1 block">{totalPaid}</span>
-            </div>
-          </div>
+          <LeadDashboard leads={allLeads} />
 
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mt-6 mb-6">
             <input
               type="text"
               placeholder="Search library by title or author..."
@@ -518,6 +515,11 @@ export default function MegaAdmin({
               {filteredBooks.map(book => {
                 const bookLeads = allLeads.filter(l => l.bookId === book.id);
                 const bookPaid = bookLeads.filter(l => l.paid).length;
+                const duplicateLeads = new Set<string>();
+                bookLeads.forEach(lead => {
+                  const key = `${lead.email.toLowerCase()}-${lead.phone.replace(/\D/g,'')}`;
+                  if (bookLeads.filter(l => `${l.email.toLowerCase()}-${l.phone.replace(/\D/g,'')}` === key).length > 1) duplicateLeads.add(key);
+                });
                 const shareUrl = `${window.location.origin}${window.location.pathname}#/book/${book.slug}`;
 
                 return (
@@ -539,7 +541,7 @@ export default function MegaAdmin({
 
                     <div className="px-5 py-3 border-b border-slate-800/60 flex gap-5 text-xs">
                       <div><span className="text-[10px] text-slate-400 block font-mono uppercase">Leads</span><span className="font-bold text-white">{bookLeads.length}</span></div>
-                      {book.type === 'paid' && <div><span className="text-[10px] text-slate-400 block font-mono uppercase">Paid</span><span className="font-bold text-emerald-400">{bookPaid}</span></div>}
+                      {duplicateLeads.size > 0 && <div><span className="text-[10px] text-slate-400 block font-mono uppercase text-red-400">⚠️ Duplicates</span><span className="font-bold text-red-400">{duplicateLeads.size}</span></div>}
                       <div className="truncate"><span className="text-[10px] text-slate-400 block font-mono uppercase">Slug</span><span className="font-mono text-slate-400 text-[11px]">/{book.slug}</span></div>
                     </div>
 
@@ -553,6 +555,9 @@ export default function MegaAdmin({
                     <div className="px-5 py-4 flex flex-wrap gap-2 mt-auto">
                       <button onClick={() => onEditBook(book)} className="flex-1 bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs py-2 rounded-xl transition">Manage Book</button>
                       <button onClick={() => onViewLanding(book)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-xs py-2 rounded-xl border border-slate-700 transition">Preview</button>
+                      <button onClick={() => handleTogglePin(book)} className={`text-xs px-3 py-2 rounded-xl border transition ${(book as any).pinned ? 'border-[#C8862A] bg-[#C8862A]/15 text-[#C8862A]' : 'border-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                        {(book as any).pinned ? '⦿ Featured' : '⭘ Pin'}
+                      </button>
                       <button onClick={() => handleTogglePublish(book.id)} className={`text-xs px-3 py-2 rounded-xl border transition ${book.published ? 'border-red-900/50 text-red-400 hover:bg-red-900/20' : 'border-emerald-900/50 text-emerald-400 hover:bg-emerald-900/20'}`}>
                         {book.published ? 'Unpublish' : 'Publish'}
                       </button>
@@ -999,7 +1004,7 @@ export default function MegaAdmin({
 
           {/* Contact & Dispatch */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact &amp; Footer Dispatch</h3>
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">�� Contact &amp; Footer Dispatch</h3>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Contact WhatsApp Number</label>
