@@ -6,7 +6,7 @@ import { autoSyncBooks, bootstrapCloud, startLiveSync, stopLiveSync, testConnect
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
-import BookCover from './components/BookCover';
+import PublishingHome from './components/PublishingHome';
 
 // ─── Hash parsing ──────────────────────────────────────────────
 function parseHash(): {
@@ -85,8 +85,10 @@ export default function App() {
     }
   });
 
-  const [isOnline, setIsOnline] = useState(false);
-  const [lastSyncStr, setLastSyncStr] = useState<string | null>(null);
+  // Connection state drives console diagnostics; the public homepage stays
+  // clean and editorial, so we only track the value without surfacing it.
+  const [, setIsOnline] = useState(false);
+  const [, setLastSyncStr] = useState<string | null>(null);
   const [, setLeadRevision] = useState(0);
 
   // ── Live sync across all browsers (real-time WebSocket) ──
@@ -233,77 +235,8 @@ export default function App() {
       );
     }
 
-    // ── Hub: Show all books ──
-    const publishedBooks = books.filter(b => b.published !== false);
-    return (
-      <div className="min-h-screen bg-[#F7F5EF] text-[#1C1B1F] font-[Inter] flex flex-col">
-        {/* Hero */}
-        <section className="bg-[#152447] px-6 pt-16 pb-28 text-center relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-amber-300 to-amber-600 opacity-70" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(201,162,39,0.08),transparent_70%)]" />
-          <div className="relative z-10">
-            <div className="flex items-center justify-center gap-2 mb-5">
-              <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-[#0D1830] font-black text-lg font-[Space_Grotesk]">N</div>
-              <span className="font-[JetBrains_Mono] text-[11px] tracking-[2.4px] uppercase text-[#C9A227]">Nexa Growth Studio</span>
-            </div>
-            <h1 className="font-[Space_Grotesk] font-bold text-[30px] md:text-[42px] text-white max-w-[640px] mx-auto leading-[1.18]">
-              Books & Guides for Nigerian Business Owners
-            </h1>
-            <p className="text-[15px] md:text-[16px] text-[#C7CCDA] max-w-[480px] mx-auto mt-5 leading-[1.65]">
-              Practical, no-fluff resources to help you grow your sales, build your brand, and scale your business.
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-6">
-              <span className="font-[JetBrains_Mono] text-[10px] tracking-wider text-slate-400">
-                {publishedBooks.length} {publishedBooks.length === 1 ? 'BOOK' : 'BOOKS'} AVAILABLE
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* Book grid */}
-        <main className="max-w-[880px] mx-auto px-6 -mt-16 relative z-10 pb-16 flex-1">
-          {publishedBooks.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-2xl border border-[rgba(21,36,71,0.08)] shadow-sm">
-              <span className="text-5xl">📚</span>
-              <p className="mt-4 text-[#6B6860] text-lg">No books published yet.</p>
-              <p className="text-sm text-[#6B6860] mt-1">Check back soon!</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {publishedBooks.map(book => (
-                <a key={book.id} href={`#/book/${book.slug}`} className="group bg-white border border-[rgba(21,36,71,0.08)] rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 no-underline text-[#1C1B1F] flex flex-col">
-                  <div className="bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center py-8 px-6">
-                    <BookCover book={book} size="md" rotate className="group-hover:rotate-0 group-hover:scale-105 transition-all duration-300" />
-                  </div>
-                  <div className="flex-1 p-5 flex flex-col">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${book.type === 'free' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {book.type === 'free' ? '🆓 Free' : `💰 ${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString()}`}
-                      </span>
-                    </div>
-                    <h3 className="font-[Space_Grotesk] font-bold text-[16px] leading-snug mb-2">{book.title}</h3>
-                    <p className="text-[12.5px] text-[#6B6860] leading-relaxed line-clamp-3 flex-1">{book.subtitle}</p>
-                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-[rgba(21,36,71,0.06)]">
-                      <span className="font-[JetBrains_Mono] text-[10px] text-[#6B6860] uppercase tracking-wider">{book.author}</span>
-                      <span className="text-[12px] text-[#C9A227] font-bold group-hover:translate-x-1 transition-transform duration-200">Get →</span>
-                    </div>
-                  </div>
-                </a>
-              ))}
-            </div>
-          )}
-        </main>
-
-        {/* Footer */}
-        <footer className="text-center pb-8 pt-6 border-t border-[rgba(21,36,71,0.08)] px-6">
-          <div className="font-[Space_Grotesk] font-semibold text-[14px]">Olakunle Samuel</div>
-          <div className="font-[JetBrains_Mono] text-[10px] tracking-[0.6px] text-[#6B6860] uppercase mt-[3px]">Nexa Growth Studio — Ibadan, Nigeria</div>
-          <div className="font-[JetBrains_Mono] text-[9px] tracking-wider text-slate-400 mt-2">
-            {isOnline ? `☁️ Live Cloud Synced ${lastSyncStr ? new Date(lastSyncStr).toLocaleTimeString() : ''}` : '⚡ Live Preview Ready'}
-          </div>
-        </footer>
-      </div>
-    );
+    // ── Hub: Publishing-house homepage for all titles ──
+    return <PublishingHome books={books} />;
   };
 
   return (
