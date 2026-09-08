@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Book, Lead } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
-import { schedulePush } from '../cloud';
+import { createLeadInCloud } from '../cloud';
 import BookCover from './BookCover';
 
 const isValidName = (v: string) => v.trim().length >= 2;
@@ -10,10 +10,9 @@ const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 interface Props {
   book: Book;
   onAdminAccess: () => void;
-  onLeadSubmitted: (all: Lead[]) => void;
 }
 
-export default function BookLanding({ book, onAdminAccess, onLeadSubmitted }: Props) {
+export default function BookLanding({ book, onAdminAccess }: Props) {
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [name, setName] = useState('');
@@ -103,9 +102,10 @@ export default function BookLanding({ book, onAdminAccess, onLeadSubmitted }: Pr
     };
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
-    schedulePush();
-    // Register the lead immediately in global state + push to cloud
-    onLeadSubmitted(allLeads);
+    // Append only this lead. A visitor download never rewrites the catalog.
+    await createLeadInCloud(newLead).catch(error => {
+      console.error('Lead cloud save failed:', error);
+    });
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName(''); setEmail(''); setPhone('');

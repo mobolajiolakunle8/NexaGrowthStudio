@@ -1,12 +1,21 @@
 rules_version = '2';
 
-// Public read so visitors can download the book from the link.
-// Write is limited to files under 25MB (admin uploads only).
 service firebase.storage {
   match /b/{bucket}/o {
-    match /books/{bookId}/{fileName} {
+    match /book-assets/{bookId}/cover/{fileName} {
       allow read: if true;
-      allow write: if request.resource.size < 25 * 1024 * 1024;
+      allow write: if request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /book-assets/{bookId}/pdf/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

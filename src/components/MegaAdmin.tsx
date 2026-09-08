@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import type { Book, Lead } from '../types';
+import type { Book } from '../types';
 import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
-import { generateId, slugify, saveBooks } from '../storage';
+import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
   getEffectiveDbUrl,
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync,
@@ -9,7 +9,6 @@ import {
 
 interface Props {
   books: Book[];
-  leads: Lead[];
   onBooksChange: (books: Book[]) => void;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
@@ -62,7 +61,7 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   },
 });
 
-export default function MegaAdmin({ books, leads, onBooksChange, onEditBook, onViewLanding, megaPasscode, onMegaPasscodeChanged }: Props) {
+export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLanding, megaPasscode, onMegaPasscodeChanged }: Props) {
   const [mainTab, setMainTab] = useState<'books' | 'settings'>('books');
   const [createOpen, setCreateOpen] = useState(false);
   const [bookType, setBookType] = useState<'free' | 'paid'>('free');
@@ -86,7 +85,7 @@ export default function MegaAdmin({ books, leads, onBooksChange, onEditBook, onV
   const [lastSync, setLastSync] = useState<string | null>(getLastSync());
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
-  const allLeads = leads;
+  const allLeads = loadLeads();
 
   const filteredBooks = books.filter(b =>
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

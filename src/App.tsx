@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Book, Lead } from './types';
 import { MEGA_ADMIN_PASSCODE_KEY, MEGA_ADMIN_DEFAULT } from './types';
-import { loadBooks, saveBooks, loadLeads } from './storage';
-import { syncBooks, syncLeads, startLiveSync, startLeadSync, stopLiveSync, testConnection } from './cloud';
+import { loadBooks, saveBooks } from './storage';
+import { autoSyncBooks, bootstrapCloud, startLiveSync, stopLiveSync, testConnection } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
@@ -87,29 +87,22 @@ export default function App() {
 
   const [isOnline, setIsOnline] = useState(false);
   const [lastSyncStr, setLastSyncStr] = useState<string | null>(null);
-
-  // Leads held in state so every admin screen refreshes the moment a
-  // visitor downloads a book on ANY device (previously it only read
-  // localStorage once, so new leads never appeared).
-  const [leads, setLeads] = useState<Lead[]>(() => loadLeads());
-
-  // Called by BookLanding the instant a lead is captured
-  const handleLeadAdded = useCallback((all: Lead[]) => {
-    setLeads(all);
-    void syncLeads(all);
-  }, []);
+  const [, setLeadRevision] = useState(0);
 
   // ── Live sync across all browsers (real-time WebSocket) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     try {
       unsubscribe = startLiveSync((fbooks: Book[], _fleads: Lead[]) => {
-        if (Array.isArray(fbooks) && fbooks.length > 0) {
+        if (Array.isArray(fbooks)) {
           setBooks(fbooks);
           saveBooks(fbooks);
           setIsOnline(true);
           setLastSyncStr(new Date().toISOString());
         }
+        // Lead changes do not alter the catalog reference, so force the admin
+        // views to re-read their local lead cache after every Firebase event.
+        setLeadRevision(value => value + 1);
       });
     } catch (err) {
       console.warn('Realtime live sync error fallback:', err);
@@ -126,14 +119,29 @@ export default function App() {
     };
   }, []);
 
-  // ── Live lead sync: leads submitted on any device appear in every admin ──
+  // ── First-load reconciliation ──────────────────────────────────
+  // Runs once per app load. It NEVER blindly overwrites the shared cloud
+  // collection. Instead:
+  //   • If the cloud already has books  → adopt them as the source of truth.
+  //   • If the cloud is genuinely empty → publish this browser's current
+  //     books ONCE, seeding the shared collection for every other browser.
+  // This is what makes cross-browser sync actually work: no browser can ever
+  // race another browser's data away just by loading the page.
   useEffect(() => {
-    const unsub = startLeadSync((cloudLeads) => {
-      setLeads(cloudLeads);
-      try { localStorage.setItem('nexa_leads_v1', JSON.stringify(cloudLeads)); } catch { /* */ }
-      setLastSyncStr(new Date().toISOString());
-    });
-    return () => unsub();
+    void (async () => {
+      try {
+        const localBooks = loadBooks();
+        const cloud = await bootstrapCloud(localBooks.length ? localBooks : [SEED_BOOK]);
+        setBooks(cloud.books);
+        saveBooks(cloud.books);
+        setIsOnline(true);
+        setLastSyncStr(new Date().toISOString());
+      } catch (error) {
+        console.error('Cloud bootstrap failed; using local catalog:', error);
+        setIsOnline(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Hash routing ──
@@ -166,11 +174,14 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, [books]);
 
-  // Every change pushes automatically to Firebase → all browsers update in real time
+  // Every change pushes automatically to Firebase → all browsers update in real time.
+  // force: true because this is always triggered by an explicit admin action
+  // (add/edit/delete/publish), including the legitimate case of deleting the
+  // very last remaining book.
   const handleBooksChange = useCallback((updated: Book[]) => {
     setBooks(updated);
     saveBooks(updated);
-    syncBooks(updated).catch(() => {});
+    autoSyncBooks(updated).catch(() => {});
   }, []);
 
   const handleUpdateBook = (updated: Book) => {
@@ -199,7 +210,6 @@ export default function App() {
       return (
         <MegaAdmin
           books={books}
-          leads={leads}
           onBooksChange={handleBooksChange}
           onEditBook={book => setView({ type: 'book-admin', book })}
           onViewLanding={handleViewLanding}
@@ -212,20 +222,14 @@ export default function App() {
       return (
         <BookAdmin
           book={view.book}
-          leads={leads.filter(l => l.bookId === view.book.id)}
           onUpdateBook={handleUpdateBook}
-          onLeadUpdated={handleLeadAdded}
           onBack={() => setView({ type: 'mega-admin' })}
         />
       );
     }
     if (view.type === 'landing') {
       return (
-        <BookLanding
-          book={view.book}
-          onAdminAccess={() => setView({ type: 'book-admin', book: view.book })}
-          onLeadSubmitted={handleLeadAdded}
-        />
+        <BookLanding book={view.book} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
       );
     }
 

@@ -50,6 +50,9 @@ export interface Lead {
   date: string;
   status: 'New' | 'In Progress' | 'Contacted' | 'Qualified' | 'Unqualified';
   paid?: boolean;
+  paymentConfirmedAt?: string;
+  deliveredAt?: string;
+  deliveryChannel?: 'WhatsApp' | 'Email';
   notes?: string;
 }
 

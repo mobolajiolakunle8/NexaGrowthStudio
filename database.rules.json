@@ -1,19 +1,22 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
     "nexa": {
-      "books": {
-        ".read": true,
-        ".write": true
-      },
-      "leads": {
-        ".read": true,
-        ".write": true
-      },
-      "meta": {
-        ".read": true,
-        ".write": true
+      "v2": {
+        "catalog": {
+          ".read": true,
+          ".write": true
+        },
+        "leads": {
+          ".read": true,
+          "$leadId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['id', 'bookId', 'name', 'email', 'phone', 'date', 'status']) || !newData.exists()"
+          }
+        },
+        "$other": {
+          ".read": true,
+          ".write": true
+        }
       }
     }
   }

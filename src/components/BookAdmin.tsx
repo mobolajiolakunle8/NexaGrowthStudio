@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import type { Book, Lead } from '../types';
-import { saveLeads, loadLeads, downloadGuidePdf } from '../storage';
-import { schedulePush } from '../cloud';
-import { isHostedLink } from '../assets';
+import { saveLeads, loadLeads, downloadGuidePdf, normalizePhoneForWA } from '../storage';
+import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
 
 interface Props {
   book: Book;
-  leads: Lead[];
   onUpdateBook: (updated: Book) => void;
-  onLeadUpdated: (all: Lead[]) => void;
   onBack: () => void;
 }
 
-export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, onBack }: Props) {
+export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
+  const leads = loadLeads().filter(l => l.bookId === book.id);
   const [editBook, setEditBook] = useState<Book>(book);
   const [tab, setTab] = useState<'leads' | 'edit' | 'assets'>('leads');
   const [search, setSearch] = useState('');
@@ -30,56 +28,26 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
     const all = loadLeads();
     const updated = all.map(l => l.id === id ? { ...l, status } : l);
     saveLeads(updated);
-    schedulePush();
-    onLeadUpdated(updated);
+    void updateLeadInCloud(id, { status });
     if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, status });
   };
 
   const handleMarkPaid = (id: string) => {
+    const paymentConfirmedAt = new Date().toISOString();
     const all = loadLeads();
-    const updated = all.map(l => l.id === id ? { ...l, paid: true } : l);
+    const updated = all.map(l => l.id === id ? { ...l, paid: true, paymentConfirmedAt, status: 'Qualified' as const } : l);
     saveLeads(updated);
-    schedulePush();
-    onLeadUpdated(updated);
-    if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true });
+    void updateLeadInCloud(id, { paid: true, paymentConfirmedAt, status: 'Qualified' });
+    if (selectedLead?.id === id) setSelectedLead({ ...selectedLead, paid: true, paymentConfirmedAt, status: 'Qualified' });
   };
 
   const handleDeleteLead = (id: string) => {
     if (confirm('Delete this lead?')) {
       const updated = loadLeads().filter(l => l.id !== id);
       saveLeads(updated);
-      schedulePush();
-      onLeadUpdated(updated);
+      void deleteLeadInCloud(id);
       setSelectedLead(null);
     }
-  };
-
-  // Direct download link that is sent to the buyer once payment is confirmed
-  const downloadLink = isHostedLink(book.customPdf) ? book.customPdf as string : '';
-
-  const whatsappDigits = (phone: string) => phone.replace(/[^\d]/g, '');
-
-  const buildDeliveryMessage = (lead: Lead) =>
-    [
-      `🎉 Thank you for your payment, ${lead.name}!`,
-      ``,
-      `Your copy of "${book.title}" is ready.`,
-      ``,
-      `⬇️ Download here: ${downloadLink}`,
-      ``,
-      `— ${book.author}`,
-    ].join('\n');
-
-  const whatsappDeliveryUrl = (lead: Lead) =>
-    `https://wa.me/${whatsappDigits(lead.phone)}?text=${encodeURIComponent(buildDeliveryMessage(lead))}`;
-
-  const emailDeliveryUrl = (lead: Lead) =>
-    `mailto:${lead.email}?subject=${encodeURIComponent(`Your download link: ${book.title}`)}&body=${encodeURIComponent(buildDeliveryMessage(lead))}`;
-
-  const copyLink = (lead: Lead) => {
-    navigator.clipboard.writeText(downloadLink);
-    setSentNotice(`Link copied for ${lead.name}`);
-    setTimeout(() => setSentNotice(null), 2500);
   };
 
   const handleSaveBook = () => {
@@ -91,7 +59,6 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverMsg, setCoverMsg] = useState<string | null>(null);
   const [pdfMsg, setPdfMsg] = useState<string | null>(null);
-  const [sentNotice, setSentNotice] = useState<string | null>(null);
 
   const handleBookCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -99,50 +66,117 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
     setCoverBusy(true);
     setCoverMsg(null);
     try {
-      // Upload to Firebase Storage so the cover shows on EVERY browser
-      const { uploadBookCover } = await import('../assets');
-      const url = await uploadBookCover(file, book.slug);
+      const { compressImageFile, approxDataUrlKB } = await import('../storage');
+      const compressed = await compressImageFile(file, 900, 0.82);
+      const kb = approxDataUrlKB(compressed);
+      const blob = await fetch(compressed).then(response => response.blob());
+      const url = await uploadBookAsset(book.id, 'cover', blob, file.name);
       setEditBook(prev => ({ ...prev, coverImage: url }));
-      setCoverMsg('✓ Cover uploaded to Storage — it now displays on every browser and device.');
-    } catch (err) {
-      // Fallback: keep a small compressed copy locally if Storage is not set up
-      try {
-        const { compressImageFile } = await import('../storage');
-        const compressed = await compressImageFile(file, 640, 0.75);
-        setEditBook(prev => ({ ...prev, coverImage: compressed }));
-        setCoverMsg(`Storage upload failed (${err instanceof Error ? err.message : 'unknown'}). Saved a compressed local copy — enable Firebase Storage for cross-device covers.`);
-      } catch {
-        setCoverMsg('Could not process that image. Try a JPG or PNG file.');
-      }
+      setCoverMsg(`Cover optimized to ~${kb}KB and uploaded for all browsers.`);
+    } catch {
+      setCoverMsg('Could not process that image. Try a JPG or PNG file.');
     }
     setCoverBusy(false);
     e.target.value = '';
   };
 
-  const [pdfBusy, setPdfBusy] = useState(false);
-
   const handlePdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setPdfMsg(null);
-    setPdfBusy(true);
-    try {
-      // Upload to Firebase Storage → get a short https link that every
-      // visitor can download from (unlimited users, never disappears).
-      const { uploadBookPdf } = await import('../assets');
-      const url = await uploadBookPdf(file, book.slug);
-      setEditBook(prev => ({ ...prev, customPdf: url }));
-      setPdfMsg(`✓ Uploaded to Storage. A shareable download link is now attached — every visitor can download it. Click "Save Asset Changes" to publish.`);
-    } catch (err) {
-      setPdfMsg(`Storage upload failed: ${err instanceof Error ? err.message : String(err)}. Make sure Firebase Storage is enabled and storage.rules is deployed.`);
+    const sizeMB = file.size / 1024 / 1024;
+    if (sizeMB > 25) {
+      setPdfMsg(`This PDF is ${sizeMB.toFixed(1)}MB. Use a file under 25MB or paste a hosted PDF link below.`);
+      e.target.value = '';
+      return;
     }
-    setPdfBusy(false);
+    try {
+      const url = await uploadBookAsset(book.id, 'pdf', file, file.name);
+      setEditBook(prev => ({ ...prev, customPdf: url }));
+      setPdfMsg(`PDF uploaded (${sizeMB.toFixed(1)}MB). The permanent delivery link is ready.`);
+    } catch {
+      setPdfMsg('Could not read that PDF file.');
+    }
     e.target.value = '';
   };
 
+  const getDirectDownloadLink = () => {
+    const link = editBook.customPdf || book.customPdf || '';
+    return /^https?:\/\//i.test(link) ? link : '';
+  };
+
+  const recordDelivery = (lead: Lead, channel: 'WhatsApp' | 'Email') => {
+    const deliveredAt = new Date().toISOString();
+    const changes: Partial<Lead> = { deliveredAt, deliveryChannel: channel, status: 'Contacted' };
+    const updated = loadLeads().map(item => item.id === lead.id ? { ...item, ...changes } : item);
+    saveLeads(updated);
+    void updateLeadInCloud(lead.id, changes);
+    setSelectedLead({ ...lead, ...changes });
+  };
+
+  const sendPaidBookViaWhatsApp = (lead: Lead) => {
+    const link = getDirectDownloadLink();
+    if (!link) {
+      alert('Upload the book PDF in Assets & Files, then save the asset changes before sending.');
+      return;
+    }
+    const message = [
+      `Hi ${lead.name},`,
+      '',
+      `Your payment for "${book.title}" has been confirmed.`,
+      `Download your book here: ${link}`,
+      '',
+      'Thank you for your purchase.',
+      `${book.author}`,
+    ].join('\n');
+    window.open(`https://wa.me/${normalizePhoneForWA(lead.phone)}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    recordDelivery(lead, 'WhatsApp');
+  };
+
+  const sendPaidBookViaEmail = (lead: Lead) => {
+    const link = getDirectDownloadLink();
+    if (!link) {
+      alert('Upload the book PDF in Assets & Files, then save the asset changes before sending.');
+      return;
+    }
+    const subject = `Your copy of ${book.title}`;
+    const body = [
+      `Hi ${lead.name},`,
+      '',
+      `Your payment for "${book.title}" has been confirmed.`,
+      '',
+      `Download your book here: ${link}`,
+      '',
+      'Thank you for your purchase.',
+      book.author,
+    ].join('\n');
+    window.location.href = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    recordDelivery(lead, 'Email');
+  };
+
+  const copyPaidBookLink = async () => {
+    const link = getDirectDownloadLink();
+    if (!link) {
+      alert('Upload and save the book PDF first.');
+      return;
+    }
+    await navigator.clipboard.writeText(link);
+    alert('Direct download link copied.');
+  };
+
   const exportCsv = () => {
-    const headers = ['Name', 'Email', 'Phone', 'Date', 'Status', 'Paid'];
-    const rows = leads.map(l => [l.name, l.email, l.phone, new Date(l.date).toLocaleString(), l.status, String(l.paid ?? 'N/A')]);
+    const headers = ['Name', 'Email', 'Phone', 'Date', 'Status', 'Paid', 'Payment Confirmed', 'Delivered', 'Channel'];
+    const rows = leads.map(l => [
+      l.name,
+      l.email,
+      l.phone,
+      new Date(l.date).toLocaleString(),
+      l.status,
+      String(l.paid ?? 'N/A'),
+      l.paymentConfirmedAt ? new Date(l.paymentConfirmedAt).toLocaleString() : '',
+      l.deliveredAt ? new Date(l.deliveredAt).toLocaleString() : '',
+      l.deliveryChannel || '',
+    ]);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -249,19 +283,7 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
                             </td>
                             {book.type === 'paid' && (
                               <td className="p-4">
-                                <div className="flex flex-col items-start gap-1.5">
-                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.paid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{lead.paid ? '✓ Paid' : 'Unpaid'}</span>
-                                  {lead.paid && downloadLink && (
-                                    <a
-                                      href={whatsappDeliveryUrl(lead)}
-                                      target="_blank" rel="noreferrer"
-                                      onClick={e => e.stopPropagation()}
-                                      className="inline-block bg-[#25D366] text-white font-bold text-[9px] px-2 py-1 rounded hover:bg-[#1eb857] transition no-underline"
-                                    >
-                                      📲 Send Link
-                                    </a>
-                                  )}
-                                </div>
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.paid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>{lead.paid ? '✓ Paid' : 'Unpaid'}</span>
                               </td>
                             )}
                           </tr>
@@ -304,46 +326,50 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
                   )}
 
                   {book.type === 'paid' && selectedLead.paid && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2 text-center">
-                      <span className="text-emerald-400 text-xs font-bold">✓ Payment Confirmed</span>
-                    </div>
-                  )}
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                      <div className="mb-3">
+                        <p className="text-xs font-bold text-emerald-400">Payment confirmed</p>
+                        {selectedLead.paymentConfirmedAt && (
+                          <p className="mt-1 text-[10px] text-slate-500">{new Date(selectedLead.paymentConfirmedAt).toLocaleString()}</p>
+                        )}
+                      </div>
 
-                  {/* ── Direct download delivery ── */}
-                  {downloadLink ? (
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
-                      <label className="text-[10px] uppercase tracking-wider text-amber-400 block">
-                        ⬇️ Send Direct Download Link
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-[9px] text-slate-400 bg-slate-950 px-2 py-1.5 rounded truncate">{downloadLink}</code>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <a
-                          href={whatsappDeliveryUrl(selectedLead)}
-                          target="_blank" rel="noreferrer"
-                          className="w-full bg-[#25D366] text-white font-bold text-xs py-2.5 rounded-lg text-center hover:bg-[#1eb857] transition no-underline"
-                        >
-                          📲 Send Link to WhatsApp
-                        </a>
-                        <a
-                          href={emailDeliveryUrl(selectedLead)}
-                          target="_blank" rel="noreferrer"
-                          className="w-full bg-slate-700 text-white font-bold text-xs py-2.5 rounded-lg text-center hover:bg-slate-600 transition no-underline"
-                        >
-                          ✉️ Send Link to Email
-                        </a>
-                        <button onClick={() => copyLink(selectedLead)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs py-2.5 rounded-lg border border-slate-700 transition">
-                          🔗 Copy Link
-                        </button>
-                      </div>
-                      {sentNotice && <p className="text-[10px] text-emerald-400 text-center">{sentNotice}</p>}
-                    </div>
-                  ) : (
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                      <p className="text-[10px] text-amber-400 leading-relaxed">
-                        ⚠️ No hosted file yet. Go to <b>Assets &amp; Files</b> and upload the book PDF — it will be stored in Firebase Storage and a shareable download link will appear here for every buyer.
-                      </p>
+                      {getDirectDownloadLink() ? (
+                        <>
+                          <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
+                            Send the permanent book link directly to this customer.
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            <button
+                              onClick={() => sendPaidBookViaWhatsApp(selectedLead)}
+                              className="w-full rounded-lg bg-[#25D366] py-2.5 text-xs font-bold text-white transition hover:bg-[#1eb857]"
+                            >
+                              Send book via WhatsApp
+                            </button>
+                            <button
+                              onClick={() => sendPaidBookViaEmail(selectedLead)}
+                              className="w-full rounded-lg bg-amber-500 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-amber-400"
+                            >
+                              Send book via email
+                            </button>
+                            <button
+                              onClick={() => void copyPaidBookLink()}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2.5 text-xs font-medium text-white transition hover:bg-slate-700"
+                            >
+                              Copy direct download link
+                            </button>
+                          </div>
+                          {selectedLead.deliveredAt && (
+                            <p className="mt-3 text-[10px] text-emerald-400">
+                              Delivery opened via {selectedLead.deliveryChannel} on {new Date(selectedLead.deliveredAt).toLocaleString()}.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[11px] leading-relaxed text-amber-400">
+                          No permanent PDF link is available. Upload the PDF in Assets &amp; Files and save the book first.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -519,7 +545,7 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
                     onChange={e => setEditBook(prev => ({ ...prev, coverImage: e.target.value.trim() || undefined }))}
                     className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Uploads are auto-compressed. Links (Imgur, Cloudinary, your site) work instantly on every browser with zero storage used.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Uploads are compressed and stored in Firebase Storage, so the cover remains available on every browser.</p>
                 </div>
               </div>
 
@@ -527,7 +553,7 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
                 <label className="text-[10px] uppercase tracking-wider text-amber-400 block mb-3">📄 Book PDF File</label>
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-xs cursor-pointer transition">
-                    {pdfBusy ? 'Uploading…' : 'Upload PDF to Storage'}
+                    Upload PDF
                     <input type="file" accept=".pdf" onChange={handlePdf} className="hidden" />
                   </label>
                   {editBook.customPdf && !/^https?:\/\//i.test(editBook.customPdf) && <span className="text-xs text-emerald-400">✓ PDF file attached</span>}
@@ -543,7 +569,7 @@ export default function BookAdmin({ book, leads, onUpdateBook, onLeadUpdated, on
                     onChange={e => setEditBook(prev => ({ ...prev, customPdf: e.target.value.trim() || undefined }))}
                     className="w-full bg-slate-900 border border-slate-800 px-3 py-2 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Files under 2.5MB sync across browsers. Bigger books: upload to Google Drive → Share → “Anyone with the link” → paste the link here.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">PDFs up to 25MB upload to Firebase Storage. You can also paste a permanent hosted PDF link.</p>
                 </div>
                 {book.type === 'free' && <p className="text-[10px] text-slate-500 mt-2">Visitors download/open this file immediately on form submission.</p>}
                 {book.type === 'paid' && <p className="text-[10px] text-slate-500 mt-2">You manually send this to leads after payment confirmation.</p>}
