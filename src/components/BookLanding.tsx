@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { Book, Lead } from '../types';
+import type { Book, Lead, SiteSettings } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
 import { createLeadInCloud } from '../cloud';
 import BookCover from './BookCover';
@@ -9,10 +9,11 @@ const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 interface Props {
   book: Book;
+  settings: SiteSettings;
   onAdminAccess: () => void;
 }
 
-export default function BookLanding({ book, onAdminAccess }: Props) {
+export default function BookLanding({ book, settings, onAdminAccess }: Props) {
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [name, setName] = useState('');
@@ -353,6 +354,15 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
                     >
                       📲 Send Payment Proof on WhatsApp
                     </a>
+                    <a
+                      href={`mailto:${settings.officialEmail}?subject=${encodeURIComponent(`Payment proof: ${book.title}`)}&body=${encodeURIComponent(`Hello Nexa Growth Studio,\n\nI have completed payment for "${book.title}".\n\nName: ${result.name}\nEmail: ${result.email}\nWhatsApp: ${result.phone}\n\nMy payment proof is attached.`)}`}
+                      className="mt-2 w-full rounded-full border border-[rgba(14,20,32,0.15)] bg-white text-[#0E1420] font-[JetBrains_Mono] font-bold text-xs py-3.5 text-center no-underline flex items-center justify-center hover:bg-[#F2EBDD] transition-colors"
+                    >
+                      ✉️ Send Payment Proof by Email
+                    </a>
+                    <p className="mt-3 text-[10px] text-[#0E1420]/55 font-mono">
+                      Orders are also received at {settings.officialEmail}
+                    </p>
                   </>
                 )}
 

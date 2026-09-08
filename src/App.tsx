@@ -180,10 +180,10 @@ export default function App() {
     autoSyncBooks(updated).catch(() => {});
   }, []);
 
-  const handleSettingsChange = useCallback((updated: SiteSettings) => {
+  const handleSettingsChange = useCallback(async (updated: SiteSettings) => {
     setSiteSettings(updated);
     try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-    saveSiteSettingsToCloud(updated).catch(() => {});
+    await saveSiteSettingsToCloud(updated);
   }, []);
 
   const handleUpdateBook = (updated: Book) => {
@@ -226,6 +226,7 @@ export default function App() {
       return (
         <BookAdmin
           book={view.book}
+          officialEmail={siteSettings.officialEmail}
           onUpdateBook={handleUpdateBook}
           onBack={() => setView({ type: 'mega-admin' })}
         />
@@ -233,7 +234,7 @@ export default function App() {
     }
     if (view.type === 'landing') {
       return (
-        <BookLanding book={view.book} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
+        <BookLanding book={view.book} settings={siteSettings} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
       );
     }
 

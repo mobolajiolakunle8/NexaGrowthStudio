@@ -227,8 +227,24 @@ export async function deleteLeadInCloud(id: string) {
 export async function uploadBookAsset(bookId: string, kind: 'cover' | 'pdf' | 'founder', file: Blob, filename: string) {
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '-');
   const target = storageRef(storage, `site-assets/${bookId}/${kind}/${Date.now()}-${safeName}`);
-  await uploadBytes(target, file, { contentType: file.type });
-  return getDownloadURL(target);
+  const timeout = <T,>(promise: Promise<T>, message: string) => new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), 15000);
+    promise.then(
+      value => { window.clearTimeout(timer); resolve(value); },
+      error => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+
+  // Storage may not be enabled on a Firebase project yet. Never leave the
+  // dashboard stuck in an endless upload state — fail with an actionable error.
+  await timeout(
+    uploadBytes(target, file, { contentType: file.type }),
+    'Firebase Storage did not respond. Enable Storage in Firebase Console or use a hosted link.',
+  );
+  return timeout(
+    getDownloadURL(target),
+    'File uploaded but Firebase Storage did not return its download link.',
+  );
 }
 
 export async function fetchFromCloud() {

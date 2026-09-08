@@ -62,9 +62,9 @@ export default function PublishingHome({ books, settings }: Props) {
 
           <nav className="hidden items-center gap-7 md:flex">
             {[
-              { label: 'Catalogue', href: '#catalogue' },
-              { label: 'Standard', href: '#manifesto' },
-              { label: 'The Founder', href: '#founder' },
+              { label: settings.navCatalogueLabel, href: '#catalogue' },
+              { label: settings.navManifestoLabel, href: '#manifesto' },
+              { label: settings.navFounderLabel, href: '#founder' },
             ].map(item => (
               <a
                 key={item.href}
@@ -84,7 +84,7 @@ export default function PublishingHome({ books, settings }: Props) {
             className="rounded-full px-5 py-2 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95 shadow-sm"
             style={{ background: OCHRE, color: '#0E1420' }}
           >
-            Browse catalogue
+            {settings.navCatalogueLabel}
           </a>
         </div>
       </header>
@@ -103,6 +103,15 @@ export default function PublishingHome({ books, settings }: Props) {
           <div>
             <Eyebrow>{settings.heroKicker}</Eyebrow>
 
+            {settings.heroBadgeText && (
+              <span
+                className="mt-4 inline-block rounded-full px-3 py-1 font-[JetBrains_Mono] text-[9px] font-semibold uppercase tracking-[0.15em]"
+                style={{ background: 'rgba(200,134,42,0.12)', color: '#9A6218' }}
+              >
+                {settings.heroBadgeText}
+              </span>
+            )}
+
             <h1
               className="mt-5 font-[Space_Grotesk] text-[36px] font-bold leading-[1.06] tracking-[-0.025em] md:text-[60px]"
               style={{ color: '#0E1420' }}
@@ -120,7 +129,7 @@ export default function PublishingHome({ books, settings }: Props) {
                 className="rounded-full px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95 shadow-md"
                 style={{ background: '#0E1420', color: '#FAF7F2' }}
               >
-                Explore Publications
+                {settings.heroPrimaryCta}
               </a>
               <a
                 href="#founder"
@@ -129,7 +138,7 @@ export default function PublishingHome({ books, settings }: Props) {
                 onMouseEnter={e => (e.currentTarget.style.borderColor = OCHRE)}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,20,32,0.2)')}
               >
-                Meet the Founder
+                {settings.heroSecondaryCta}
               </a>
             </div>
 
@@ -216,13 +225,13 @@ export default function PublishingHome({ books, settings }: Props) {
         <div className="mx-auto max-w-6xl px-5">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <Eyebrow>Published Titles</Eyebrow>
+              <Eyebrow>{settings.catalogueEyebrow}</Eyebrow>
               <h2 className="mt-3 font-[Space_Grotesk] text-[32px] font-bold tracking-[-0.015em] md:text-[44px]">
-                The Library
+                {settings.catalogueHeading}
               </h2>
             </div>
             <p className="max-w-sm text-[14px] leading-relaxed" style={{ color: 'rgba(14,20,32,0.65)' }}>
-              {published.length} publication{published.length === 1 ? '' : 's'} available. Delivered directly on WhatsApp or immediate download.
+              {published.length} publication{published.length === 1 ? '' : 's'} {settings.catalogueSummary}
             </p>
           </div>
 
@@ -389,7 +398,7 @@ export default function PublishingHome({ books, settings }: Props) {
             className="overflow-hidden rounded-3xl px-8 py-14 text-center md:px-16"
             style={{ background: 'linear-gradient(150deg, #16233B, #0E1420)' }}
           >
-            <Eyebrow tone="light">Direct Publisher Dispatch</Eyebrow>
+            <Eyebrow tone="light">{settings.contactEyebrow}</Eyebrow>
             <h2 className="mx-auto mt-4 max-w-xl font-[Space_Grotesk] text-[28px] font-bold leading-[1.16] text-white md:text-[38px]">
               {settings.newsletterHeading}
             </h2>
@@ -411,7 +420,14 @@ export default function PublishingHome({ books, settings }: Props) {
                 className="rounded-full border px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline hover:bg-white/5 transition-colors"
                 style={{ borderColor: 'rgba(255,255,255,0.25)', color: '#FAF7F2' }}
               >
-                Message on WhatsApp
+                {settings.contactWhatsappCta}
+              </a>
+              <a
+                href={`mailto:${settings.officialEmail}?subject=${encodeURIComponent('Nexa Growth Studio enquiry')}`}
+                className="rounded-full border px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline hover:bg-white/5 transition-colors"
+                style={{ borderColor: 'rgba(255,255,255,0.25)', color: '#FAF7F2' }}
+              >
+                {settings.contactEmailCta}
               </a>
             </div>
           </div>
@@ -437,9 +453,9 @@ export default function PublishingHome({ books, settings }: Props) {
 
             <div className="flex flex-wrap gap-x-7 gap-y-2">
               {[
-                { label: 'Catalogue', href: '#catalogue' },
-                { label: 'Standard', href: '#manifesto' },
-                { label: 'The Founder', href: '#founder' },
+                { label: settings.navCatalogueLabel, href: '#catalogue' },
+                { label: settings.navManifestoLabel, href: '#manifesto' },
+                { label: settings.navFounderLabel, href: '#founder' },
               ].map(link => (
                 <a
                   key={link.href}
@@ -465,6 +481,13 @@ export default function PublishingHome({ books, settings }: Props) {
             <p className="font-[JetBrains_Mono] text-[9.5px] tracking-wide" style={{ color: 'rgba(14,20,32,0.45)' }}>
               Engineered by {settings.founderName}
             </p>
+            <a
+              href={`mailto:${settings.officialEmail}`}
+              className="font-[JetBrains_Mono] text-[9.5px] tracking-wide no-underline hover:underline"
+              style={{ color: 'rgba(14,20,32,0.45)' }}
+            >
+              {settings.officialEmail}
+            </a>
           </div>
         </div>
       </footer>

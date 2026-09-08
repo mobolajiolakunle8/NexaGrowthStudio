@@ -1,18 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Book, SiteSettings } from '../types';
 import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
 import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
   getEffectiveDbUrl,
-  testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync,
-  saveSiteSettingsToCloud, uploadBookAsset
+  testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync
 } from '../cloud';
 
 interface Props {
   books: Book[];
   settings: SiteSettings;
   onBooksChange: (books: Book[]) => void;
-  onSettingsChange: (settings: SiteSettings) => void;
+  onSettingsChange: (settings: SiteSettings) => Promise<void>;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
   megaPasscode: string;
@@ -87,6 +86,10 @@ export default function MegaAdmin({
   const [savingFrontpage, setSavingFrontpage] = useState(false);
   const [frontpageMsg, setFrontpageMsg] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  useEffect(() => {
+    setSiteDraft(settings);
+  }, [settings]);
 
   // Settings State
   const [curPass, setCurPass] = useState('');
@@ -168,8 +171,7 @@ export default function MegaAdmin({
     setSavingFrontpage(true);
     setFrontpageMsg(null);
     try {
-      await saveSiteSettingsToCloud(siteDraft);
-      onSettingsChange(siteDraft);
+      await onSettingsChange(siteDraft);
       setFrontpageMsg('✓ Front page updated and broadcast to all live browsers!');
       setTimeout(() => setFrontpageMsg(null), 4000);
     } catch (e) {
@@ -182,24 +184,56 @@ export default function MegaAdmin({
   const handleFounderPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFrontpageMsg('Please choose an image file (JPG, PNG, or WebP).');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setFrontpageMsg('Please choose a founder photo smaller than 8MB.');
+      e.target.value = '';
+      return;
+    }
     setUploadingPhoto(true);
+    setFrontpageMsg('Optimizing founder photo…');
     try {
-      const { compressImageFile } = await import('../storage');
-      const compressedDataUrl = await compressImageFile(file, 900, 0.85);
+      const { approxDataUrlKB, compressImageFile } = await import('../storage');
+      // Re-encode until the portrait is small enough to travel safely in the
+      // Realtime Database settings record. This avoids Firebase Storage stalls.
+      const profiles: Array<[number, number]> = [
+        [900, 0.82],
+        [720, 0.75],
+        [560, 0.68],
+        [460, 0.6],
+      ];
+      let portrait = '';
+      let sizeKB = 0;
 
-      // Try uploading to Firebase storage for a public URL, fallback to compressed data URL
-      try {
-        const blob = await fetch(compressedDataUrl).then(r => r.blob());
-        const cloudUrl = await uploadBookAsset('founder', 'founder', blob, file.name);
-        setSiteDraft(prev => ({ ...prev, founderPhoto: cloudUrl }));
-      } catch {
-        setSiteDraft(prev => ({ ...prev, founderPhoto: compressedDataUrl }));
+      for (const [dimension, quality] of profiles) {
+        const candidate = await compressImageFile(file, dimension, quality);
+        const candidateSize = approxDataUrlKB(candidate);
+        portrait = candidate;
+        sizeKB = candidateSize;
+        if (candidateSize <= 280) break;
       }
-      setFrontpageMsg('Photo ready! Click "Save Front Page" to publish.');
-    } catch {
-      alert('Could not process that photo. Please try a JPG or PNG.');
+
+      if (sizeKB > 320) {
+        setFrontpageMsg('Photo is still too large after optimization. Please use a smaller JPG or PNG under 3MB.');
+        return;
+      }
+
+      const updated = { ...siteDraft, founderPhoto: portrait };
+      setSiteDraft(updated);
+
+      // Upload directly to the same live settings record used by the front
+      // page. No Firebase Storage setup or stalled upload state is involved.
+      await onSettingsChange(updated);
+      setFrontpageMsg(`✓ Founder portrait published (${sizeKB}KB) and synced to every browser.`);
+    } catch (error) {
+      setFrontpageMsg(`Photo upload failed: ${error instanceof Error ? error.message : 'Please try a JPG or PNG.'}`);
     } finally {
       setUploadingPhoto(false);
+      e.target.value = '';
     }
   };
 
@@ -300,7 +334,7 @@ export default function MegaAdmin({
         writeLocal(data.books, Array.isArray(data.leads) ? data.leads : []);
         onBooksChange(data.books);
         if (data.settings) {
-          onSettingsChange(data.settings);
+          void onSettingsChange(data.settings);
           setSiteDraft(data.settings);
         }
         setBackupMsg('Backup restored successfully.');
@@ -526,6 +560,33 @@ export default function MegaAdmin({
                   className={inputCls}
                 />
               </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Navigation: Catalogue</label>
+                <input
+                  type="text"
+                  value={siteDraft.navCatalogueLabel}
+                  onChange={e => setSiteDraft(p => ({ ...p, navCatalogueLabel: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Navigation: Standard</label>
+                <input
+                  type="text"
+                  value={siteDraft.navManifestoLabel}
+                  onChange={e => setSiteDraft(p => ({ ...p, navManifestoLabel: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Navigation: Founder / Owner</label>
+                <input
+                  type="text"
+                  value={siteDraft.navFounderLabel}
+                  onChange={e => setSiteDraft(p => ({ ...p, navFounderLabel: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
             </div>
           </section>
 
@@ -543,6 +604,16 @@ export default function MegaAdmin({
                 />
               </div>
               <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Hero Proof Badge</label>
+                <input
+                  type="text"
+                  value={siteDraft.heroBadgeText}
+                  onChange={e => setSiteDraft(p => ({ ...p, heroBadgeText: e.target.value }))}
+                  className={inputCls}
+                  placeholder="e.g. Field-tested business playbooks"
+                />
+              </div>
+              <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Main Hero Headline</label>
                 <input
                   type="text"
@@ -557,6 +628,137 @@ export default function MegaAdmin({
                   rows={3}
                   value={siteDraft.heroSubtitle}
                   onChange={e => setSiteDraft(p => ({ ...p, heroSubtitle: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Primary CTA Text</label>
+                  <input
+                    type="text"
+                    value={siteDraft.heroPrimaryCta}
+                    onChange={e => setSiteDraft(p => ({ ...p, heroPrimaryCta: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Secondary CTA Text</label>
+                  <input
+                    type="text"
+                    value={siteDraft.heroSecondaryCta}
+                    onChange={e => setSiteDraft(p => ({ ...p, heroSecondaryCta: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Publishing Standard */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div>
+              <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">📚 Publishing Standard</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Edit the dark manifesto section shown above the catalogue.</p>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Section Eyebrow</label>
+              <input
+                type="text"
+                value={siteDraft.manifestoEyebrow}
+                onChange={e => setSiteDraft(p => ({ ...p, manifestoEyebrow: e.target.value }))}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Section Heading</label>
+              <input
+                type="text"
+                value={siteDraft.manifestoHeading}
+                onChange={e => setSiteDraft(p => ({ ...p, manifestoHeading: e.target.value }))}
+                className={inputCls}
+              />
+            </div>
+            <div className="space-y-3">
+              {siteDraft.manifestoCards.map((card, index) => (
+                <div key={`${card.number}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs text-[#C8862A]">STANDARD {index + 1}</span>
+                    {siteDraft.manifestoCards.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setSiteDraft(p => ({ ...p, manifestoCards: p.manifestoCards.filter((_, i) => i !== index) }))}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid sm:grid-cols-[100px_1fr] gap-3">
+                    <input
+                      type="text"
+                      value={card.number}
+                      onChange={e => setSiteDraft(p => ({ ...p, manifestoCards: p.manifestoCards.map((item, i) => i === index ? { ...item, number: e.target.value } : item) }))}
+                      className={inputCls}
+                      placeholder="01"
+                    />
+                    <input
+                      type="text"
+                      value={card.title}
+                      onChange={e => setSiteDraft(p => ({ ...p, manifestoCards: p.manifestoCards.map((item, i) => i === index ? { ...item, title: e.target.value } : item) }))}
+                      className={inputCls}
+                      placeholder="Standard title"
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={card.description}
+                    onChange={e => setSiteDraft(p => ({ ...p, manifestoCards: p.manifestoCards.map((item, i) => i === index ? { ...item, description: e.target.value } : item) }))}
+                    className={inputCls}
+                    placeholder="Explain this publishing standard"
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setSiteDraft(p => ({
+                  ...p,
+                  manifestoCards: [...p.manifestoCards, { number: String(p.manifestoCards.length + 1).padStart(2, '0'), title: 'New Standard', description: 'Describe this publishing standard.' }],
+                }))}
+                className="text-xs font-mono font-semibold text-[#C8862A] hover:underline"
+              >
+                + Add publishing standard
+              </button>
+            </div>
+          </section>
+
+          {/* Catalogue Copy */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">📖 Catalogue Section</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Catalogue Eyebrow</label>
+                <input
+                  type="text"
+                  value={siteDraft.catalogueEyebrow}
+                  onChange={e => setSiteDraft(p => ({ ...p, catalogueEyebrow: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Catalogue Heading</label>
+                <input
+                  type="text"
+                  value={siteDraft.catalogueHeading}
+                  onChange={e => setSiteDraft(p => ({ ...p, catalogueHeading: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Catalogue Summary</label>
+                <textarea
+                  rows={2}
+                  value={siteDraft.catalogueSummary}
+                  onChange={e => setSiteDraft(p => ({ ...p, catalogueSummary: e.target.value }))}
                   className={inputCls}
                 />
               </div>
@@ -629,7 +831,7 @@ export default function MegaAdmin({
                       Remove photo (fallback to monogram)
                     </button>
                   )}
-                  <p className="text-[11px] text-slate-500">Auto-compressed and uploaded to Firebase Storage. Displays cleanly on the homepage.</p>
+                  <p className="text-[11px] text-slate-500">Optimized and saved to your live studio settings. It will display on the homepage automatically.</p>
                 </div>
               </div>
             </div>
@@ -690,6 +892,16 @@ export default function MegaAdmin({
                 />
               </div>
               <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Official Studio Email</label>
+                <input
+                  type="email"
+                  value={siteDraft.officialEmail}
+                  onChange={e => setSiteDraft(p => ({ ...p, officialEmail: e.target.value }))}
+                  className={inputCls}
+                  placeholder="nexagrowthstudio.ng@gmail.com"
+                />
+              </div>
+              <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Copyright Label</label>
                 <input
                   type="text"
@@ -713,6 +925,33 @@ export default function MegaAdmin({
                   rows={2}
                   value={siteDraft.newsletterSubtitle}
                   onChange={e => setSiteDraft(p => ({ ...p, newsletterSubtitle: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Dispatch Eyebrow</label>
+                <input
+                  type="text"
+                  value={siteDraft.contactEyebrow}
+                  onChange={e => setSiteDraft(p => ({ ...p, contactEyebrow: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">WhatsApp Button Text</label>
+                <input
+                  type="text"
+                  value={siteDraft.contactWhatsappCta}
+                  onChange={e => setSiteDraft(p => ({ ...p, contactWhatsappCta: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Email Button Text</label>
+                <input
+                  type="text"
+                  value={siteDraft.contactEmailCta}
+                  onChange={e => setSiteDraft(p => ({ ...p, contactEmailCta: e.target.value }))}
                   className={inputCls}
                 />
               </div>

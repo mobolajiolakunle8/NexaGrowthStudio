@@ -5,11 +5,12 @@ import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud'
 
 interface Props {
   book: Book;
+  officialEmail: string;
   onUpdateBook: (updated: Book) => void;
   onBack: () => void;
 }
 
-export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
+export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }: Props) {
   const leads = loadLeads().filter(l => l.bookId === book.id);
   const [editBook, setEditBook] = useState<Book>(book);
   const [tab, setTab] = useState<'leads' | 'edit' | 'assets'>('leads');
@@ -184,7 +185,7 @@ export default function BookAdmin({ book, onUpdateBook, onBack }: Props) {
       'Thank you for your purchase.',
       book.author,
     ].join('\n');
-    window.location.href = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = `mailto:${encodeURIComponent(lead.email)}?cc=${encodeURIComponent(officialEmail)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     recordDelivery(lead, 'Email');
   };
 

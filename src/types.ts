@@ -60,10 +60,15 @@ export interface SiteSettings {
   studioName: string;
   studioTagline: string;
   location: string;
+  navCatalogueLabel: string;
+  navManifestoLabel: string;
+  navFounderLabel: string;
   heroKicker: string;
   heroTitle: string;
   heroSubtitle: string;
   heroBadgeText: string;
+  heroPrimaryCta: string;
+  heroSecondaryCta: string;
   founderName: string;
   founderRole: string;
   founderBadge: string;
@@ -79,7 +84,14 @@ export interface SiteSettings {
     title: string;
     description: string;
   }>;
+  catalogueEyebrow: string;
+  catalogueHeading: string;
+  catalogueSummary: string;
   contactWhatsapp: string;
+  officialEmail: string;
+  contactEyebrow: string;
+  contactWhatsappCta: string;
+  contactEmailCta: string;
   newsletterHeading: string;
   newsletterSubtitle: string;
   copyrightText: string;
@@ -89,10 +101,15 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   studioName: 'Nexa Growth Studio',
   studioTagline: 'Independent Publishing & Growth Lab',
   location: 'Ibadan, Nigeria',
+  navCatalogueLabel: 'Catalogue',
+  navManifestoLabel: 'Standard',
+  navFounderLabel: 'Behind Nexa',
   heroKicker: 'Ibadan · Nigeria · Est. 2024',
   heroTitle: 'Books that teach business properly.',
   heroSubtitle: 'We publish practical, field-tested guides for African founders and small-business owners. No theory for theory’s sake — just clear playbooks you can apply the same week you read them.',
   heroBadgeText: 'Field-tested business playbooks',
+  heroPrimaryCta: 'Explore Publications',
+  heroSecondaryCta: 'Meet the Founder',
   founderName: 'Olakunle Samuel',
   founderRole: 'Founder & Publisher',
   founderBadge: 'The Mind Behind Nexa Growth Studio',
@@ -120,7 +137,14 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
       description: 'Short, structured and directly actionable. Designed to be finished on a Sunday and executed on Monday morning.',
     },
   ],
+  catalogueEyebrow: 'Published Titles',
+  catalogueHeading: 'The Library',
+  catalogueSummary: 'Available now. Delivered directly on WhatsApp or immediate download.',
   contactWhatsapp: '+2349030192034',
+  officialEmail: 'nexagrowthstudio.ng@gmail.com',
+  contactEyebrow: 'Direct Publisher Dispatch',
+  contactWhatsappCta: 'Message on WhatsApp',
+  contactEmailCta: 'Email the Studio',
   newsletterHeading: 'Be first to read every new release.',
   newsletterSubtitle: 'New playbooks, free sample chapters, and field notes on scaling Nigerian businesses. Direct to your inbox or WhatsApp, zero spam.',
   copyrightText: 'Nexa Growth Studio. Published with pride in Ibadan, Nigeria.',
