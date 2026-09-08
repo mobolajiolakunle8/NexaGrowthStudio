@@ -1,27 +1,21 @@
-import type { Book } from '../types';
+import type { Book, SiteSettings } from '../types';
 import BookCover from './BookCover';
 
 interface Props {
   books: Book[];
+  settings: SiteSettings;
 }
 
-/* ─── Editorial design tokens ───────────────────────────────
-   Ink #0E1420 · Paper #FAF7F2 · Ochre #C8862A · Clay #A8452F
-   Sage #4F6B52 · Slate-blue #26364F                        */
 const OCHRE = '#C8862A';
 
 const money = (book: Book) =>
   `${book.payment?.currency || '₦'}${(book.payment?.price ?? 0).toLocaleString()}`;
 
-function Mark({ light = false }: { light?: boolean }) {
+function Mark() {
   return (
     <span
       className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[15px] font-black"
-      style={
-        light
-          ? { background: OCHRE, color: '#0E1420' }
-          : { background: '#0E1420', color: OCHRE }
-      }
+      style={{ background: '#0E1420', color: OCHRE }}
     >
       N
     </span>
@@ -39,30 +33,29 @@ function Eyebrow({ children, tone = 'dark' }: { children: React.ReactNode; tone?
   );
 }
 
-export default function PublishingHome({ books }: Props) {
+export default function PublishingHome({ books, settings }: Props) {
   const published = books.filter(b => b.published !== false);
   const featured = published[0];
-  const rest = published.slice(1);
 
   return (
-    <div className="min-h-screen font-[Inter]" style={{ background: '#FAF7F2', color: '#0E1420' }}>
+    <div className="min-h-screen font-[Inter] selection:bg-[#C8862A] selection:text-[#0E1420]" style={{ background: '#FAF7F2', color: '#0E1420' }}>
       {/* ─────────── Masthead ─────────── */}
       <header
         className="sticky top-0 z-40 border-b backdrop-blur-md"
-        style={{ borderColor: 'rgba(14,20,32,0.08)', background: 'rgba(250,247,242,0.88)' }}
+        style={{ borderColor: 'rgba(14,20,32,0.08)', background: 'rgba(250,247,242,0.92)' }}
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
           <a href="#/" className="flex items-center gap-3 no-underline">
             <Mark />
             <span className="leading-tight">
               <span className="block font-[Space_Grotesk] text-[15px] font-bold" style={{ color: '#0E1420' }}>
-                Nexa Growth Studio
+                {settings.studioName}
               </span>
               <span
                 className="block font-[JetBrains_Mono] text-[8.5px] uppercase tracking-[0.22em]"
                 style={{ color: 'rgba(14,20,32,0.45)' }}
               >
-                Independent Publishing
+                {settings.studioTagline}
               </span>
             </span>
           </a>
@@ -70,8 +63,8 @@ export default function PublishingHome({ books }: Props) {
           <nav className="hidden items-center gap-7 md:flex">
             {[
               { label: 'Catalogue', href: '#catalogue' },
-              { label: 'About', href: '#about' },
-              { label: 'Author', href: '#author' },
+              { label: 'Standard', href: '#manifesto' },
+              { label: 'The Founder', href: '#founder' },
             ].map(item => (
               <a
                 key={item.href}
@@ -88,91 +81,73 @@ export default function PublishingHome({ books }: Props) {
 
           <a
             href={featured ? `#/book/${featured.slug}` : '#catalogue'}
-            className="rounded-full px-4 py-2 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.14em] no-underline transition-transform hover:-translate-y-0.5"
+            className="rounded-full px-5 py-2 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95 shadow-sm"
             style={{ background: OCHRE, color: '#0E1420' }}
           >
-            Browse books
+            Browse catalogue
           </a>
         </div>
       </header>
 
       {/* ─────────── Hero ─────────── */}
       <section className="relative overflow-hidden border-b" style={{ borderColor: 'rgba(14,20,32,0.08)' }}>
-        {/* soft washes */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(900px 340px at 12% -8%, rgba(200,134,42,0.13), transparent 65%), radial-gradient(700px 320px at 92% 8%, rgba(79,107,82,0.1), transparent 60%)',
+              'radial-gradient(900px 340px at 12% -8%, rgba(200,134,42,0.14), transparent 65%), radial-gradient(700px 320px at 92% 8%, rgba(79,107,82,0.1), transparent 60%)',
           }}
         />
 
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 md:grid-cols-[1.15fr_0.85fr] md:py-24">
           <div>
-            <Eyebrow>Ibadan · Nigeria · Est. 2024</Eyebrow>
+            <Eyebrow>{settings.heroKicker}</Eyebrow>
 
             <h1
-              className="mt-5 font-[Space_Grotesk] text-[38px] font-bold leading-[1.05] tracking-[-0.02em] md:text-[62px]"
+              className="mt-5 font-[Space_Grotesk] text-[36px] font-bold leading-[1.06] tracking-[-0.025em] md:text-[60px]"
               style={{ color: '#0E1420' }}
             >
-              Books that teach
-              <br />
-              business{' '}
-              <span className="relative inline-block">
-                <span style={{ color: OCHRE }}>properly.</span>
-                <svg
-                  className="absolute -bottom-1 left-0 w-full"
-                  height="10"
-                  viewBox="0 0 220 10"
-                  fill="none"
-                  preserveAspectRatio="none"
-                >
-                  <path d="M2 7C60 2 160 2 218 6" stroke={OCHRE} strokeWidth="2.5" strokeLinecap="round" opacity="0.45" />
-                </svg>
-              </span>
+              {settings.heroTitle}
             </h1>
 
-            <p className="mt-6 max-w-[30rem] text-[16px] leading-[1.72]" style={{ color: 'rgba(14,20,32,0.7)' }}>
-              We publish practical, field-tested guides for African founders and small-business
-              owners. No theory for theory's sake — just clear playbooks you can apply the same week
-              you read them.
+            <p className="mt-6 max-w-[32rem] text-[16px] leading-[1.72]" style={{ color: 'rgba(14,20,32,0.72)' }}>
+              {settings.heroSubtitle}
             </p>
 
-            <div className="mt-9 flex flex-wrap items-center gap-3">
+            <div className="mt-9 flex flex-wrap items-center gap-3.5">
               <a
                 href="#catalogue"
-                className="rounded-full px-6 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-transform hover:-translate-y-0.5"
+                className="rounded-full px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95 shadow-md"
                 style={{ background: '#0E1420', color: '#FAF7F2' }}
               >
-                View the catalogue
+                Explore Publications
               </a>
               <a
-                href="#about"
+                href="#founder"
                 className="rounded-full border px-6 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-colors"
-                style={{ borderColor: 'rgba(14,20,32,0.18)', color: '#0E1420' }}
+                style={{ borderColor: 'rgba(14,20,32,0.2)', color: '#0E1420' }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = OCHRE)}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,20,32,0.18)')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(14,20,32,0.2)')}
               >
-                Why we publish
+                Meet the Founder
               </a>
             </div>
 
-            {/* proof strip */}
             <div
               className="mt-12 flex flex-wrap gap-x-8 gap-y-4 border-t pt-6"
               style={{ borderColor: 'rgba(14,20,32,0.1)' }}
             >
               {[
-                { n: String(published.length).padStart(2, '0'), l: 'Titles in print' },
-                { n: '100%', l: 'Field-tested' },
-                { n: '₦', l: 'Accessible pricing' },
+                { n: String(published.length).padStart(2, '0'), l: 'Active Playbooks' },
+                { n: '100%', l: 'African Realities' },
+                { n: 'Direct', l: 'Instant Delivery' },
               ].map(stat => (
                 <div key={stat.l}>
                   <p className="font-[Space_Grotesk] text-2xl font-bold" style={{ color: OCHRE }}>
                     {stat.n}
                   </p>
                   <p
-                    className="font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.18em]"
+                    className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.18em]"
                     style={{ color: 'rgba(14,20,32,0.5)' }}
                   >
                     {stat.l}
@@ -182,30 +157,29 @@ export default function PublishingHome({ books }: Props) {
             </div>
           </div>
 
-          {/* featured cover art */}
+          {/* Featured Cover Display */}
           <div className="relative flex items-center justify-center">
             <div
-              className="pointer-events-none absolute h-[300px] w-[300px] rounded-full blur-3xl md:h-[380px] md:w-[380px]"
-              style={{ background: 'rgba(200,134,42,0.16)' }}
+              className="pointer-events-none absolute h-[320px] w-[320px] rounded-full blur-3xl md:h-[400px] md:w-[400px]"
+              style={{ background: 'rgba(200,134,42,0.18)' }}
             />
             {featured ? (
               <div className="relative">
-                <BookCover book={featured} size="lg" rotate />
-                {/* floating badge */}
+                <BookCover book={featured} size="lg" rotate className="drop-shadow-2xl hover:rotate-0 transition-transform duration-300" />
                 <div
-                  className="absolute -right-5 top-6 rounded-full px-3 py-1.5 font-[JetBrains_Mono] text-[9px] font-bold uppercase tracking-[0.14em] shadow-lg"
-                  style={{ background: '#FAF7F2', color: '#0E1420', border: `1px solid rgba(14,20,32,0.1)` }}
+                  className="absolute -right-4 top-6 rounded-full px-3.5 py-1.5 font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-[0.14em] shadow-lg backdrop-blur-md"
+                  style={{ background: '#FAF7F2', color: '#0E1420', border: `1px solid rgba(14,20,32,0.12)` }}
                 >
-                  {featured.type === 'free' ? '★ Free download' : `★ ${money(featured)}`}
+                  {featured.type === 'free' ? '★ Free Download' : `★ ${money(featured)}`}
                 </div>
               </div>
             ) : (
               <div
-                className="grid h-[300px] w-[220px] place-items-center rounded-lg border border-dashed text-center"
-                style={{ borderColor: 'rgba(14,20,32,0.18)' }}
+                className="grid h-[300px] w-[220px] place-items-center rounded-2xl border border-dashed text-center"
+                style={{ borderColor: 'rgba(14,20,32,0.2)' }}
               >
                 <p className="px-5 font-[JetBrains_Mono] text-[10px] uppercase tracking-wider" style={{ color: 'rgba(14,20,32,0.4)' }}>
-                  New titles coming soon
+                  New titles in development
                 </p>
               </div>
             )}
@@ -213,39 +187,23 @@ export default function PublishingHome({ books }: Props) {
         </div>
       </section>
 
-      {/* ─────────── Manifesto ─────────── */}
-      <section id="about" className="border-b py-20" style={{ borderColor: 'rgba(14,20,32,0.08)', background: '#0E1420' }}>
+      {/* ─────────── Publishing Manifesto ─────────── */}
+      <section id="manifesto" className="border-b py-20" style={{ borderColor: 'rgba(14,20,32,0.08)', background: '#0E1420' }}>
         <div className="mx-auto max-w-6xl px-5">
-          <Eyebrow tone="light">Our publishing standard</Eyebrow>
-          <h2 className="mt-5 max-w-2xl font-[Space_Grotesk] text-[28px] font-bold leading-[1.15] tracking-[-0.01em] text-white md:text-[40px]">
-            Every title has to earn its place on this page.
+          <Eyebrow tone="light">{settings.manifestoEyebrow}</Eyebrow>
+          <h2 className="mt-4 max-w-2xl font-[Space_Grotesk] text-[28px] font-bold leading-[1.14] tracking-[-0.015em] text-white md:text-[40px]">
+            {settings.manifestoHeading}
           </h2>
 
-          <div className="mt-14 grid gap-px overflow-hidden rounded-2xl md:grid-cols-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
-            {[
-              {
-                k: '01',
-                t: 'Written from practice',
-                d: 'Every playbook is built on real client work, real failures and real numbers — not recycled internet advice.',
-              },
-              {
-                k: '02',
-                t: 'Built for this market',
-                d: 'Pricing in naira, Nigerian customer behaviour, local logistics. The realities you actually operate inside.',
-              },
-              {
-                k: '03',
-                t: 'Readable in one sitting',
-                d: 'Short, structured and direct. Designed to be finished on a Sunday and applied on Monday morning.',
-              },
-            ].map(item => (
-              <div key={item.k} className="p-8" style={{ background: '#0E1420' }}>
-                <p className="font-[JetBrains_Mono] text-[11px] font-bold tracking-[0.2em]" style={{ color: OCHRE }}>
-                  {item.k}
+          <div className="mt-12 grid gap-px overflow-hidden rounded-3xl md:grid-cols-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            {settings.manifestoCards.map(item => (
+              <div key={item.number} className="p-8 md:p-9" style={{ background: '#0E1420' }}>
+                <p className="font-[JetBrains_Mono] text-[12px] font-bold tracking-[0.2em]" style={{ color: OCHRE }}>
+                  {item.number}
                 </p>
-                <h3 className="mt-4 font-[Space_Grotesk] text-[19px] font-bold text-white">{item.t}</h3>
-                <p className="mt-3 text-[14px] leading-[1.7]" style={{ color: 'rgba(255,255,255,0.62)' }}>
-                  {item.d}
+                <h3 className="mt-4 font-[Space_Grotesk] text-[20px] font-bold text-white">{item.title}</h3>
+                <p className="mt-3 text-[14px] leading-[1.7]" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                  {item.description}
                 </p>
               </div>
             ))}
@@ -253,113 +211,44 @@ export default function PublishingHome({ books }: Props) {
         </div>
       </section>
 
-      {/* ─────────── Latest release spotlight ─────────── */}
-      {featured && (
-        <section className="border-b py-16" style={{ borderColor: 'rgba(14,20,32,0.08)' }}>
-          <div className="mx-auto max-w-6xl px-5">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <Eyebrow>Latest release</Eyebrow>
-              <span
-                className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.18em]"
-                style={{ color: 'rgba(14,20,32,0.38)' }}
-              >
-                NGS-001
-              </span>
-            </div>
-
-            <a
-              href={`#/book/${featured.slug}`}
-              className="group mt-6 grid items-center gap-9 rounded-3xl border p-7 no-underline transition-all duration-300 md:grid-cols-[auto_1fr_auto] md:p-9"
-              style={{ borderColor: 'rgba(14,20,32,0.1)', background: '#FFFFFF' }}
-              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 24px 48px -24px rgba(14,20,32,0.25)')}
-              onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-            >
-              <BookCover
-                book={featured}
-                size="sm"
-                className="transition-transform duration-300 group-hover:scale-[1.05]"
-              />
-
-              <div>
-                <h3
-                  className="font-[Space_Grotesk] text-[22px] font-bold leading-tight md:text-[27px]"
-                  style={{ color: '#0E1420' }}
-                >
-                  {featured.title}
-                </h3>
-                <p className="mt-2.5 max-w-lg text-[14px] leading-[1.68]" style={{ color: 'rgba(14,20,32,0.62)' }}>
-                  {featured.subtitle}
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span
-                    className="rounded-full px-2.5 py-1 font-[JetBrains_Mono] text-[9px] font-bold uppercase tracking-[0.14em]"
-                    style={
-                      featured.type === 'free'
-                        ? { background: 'rgba(79,107,82,0.12)', color: '#3E5A41' }
-                        : { background: 'rgba(200,134,42,0.14)', color: '#8A5B18' }
-                    }
-                  >
-                    {featured.type === 'free' ? 'Free download' : money(featured)}
-                  </span>
-                  <span
-                    className="font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.14em]"
-                    style={{ color: 'rgba(14,20,32,0.4)' }}
-                  >
-                    {featured.author}
-                  </span>
-                </div>
-              </div>
-
-              <span
-                className="hidden rounded-full px-5 py-3 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.14em] no-underline transition-transform group-hover:-translate-y-0.5 md:block"
-                style={{ background: OCHRE, color: '#0E1420' }}
-              >
-                Open title →
-              </span>
-            </a>
-          </div>
-        </section>
-      )}
-
       {/* ─────────── Catalogue ─────────── */}
       <section id="catalogue" className="py-20">
         <div className="mx-auto max-w-6xl px-5">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <Eyebrow>The collection</Eyebrow>
-              <h2 className="mt-4 font-[Space_Grotesk] text-[30px] font-bold tracking-[-0.01em] md:text-[42px]">
-                Current catalogue
+              <Eyebrow>Published Titles</Eyebrow>
+              <h2 className="mt-3 font-[Space_Grotesk] text-[32px] font-bold tracking-[-0.015em] md:text-[44px]">
+                The Library
               </h2>
             </div>
-            <p className="max-w-sm text-[14px] leading-relaxed" style={{ color: 'rgba(14,20,32,0.6)' }}>
-              {published.length} title{published.length === 1 ? '' : 's'} available. Instant delivery
-              by download or WhatsApp.
+            <p className="max-w-sm text-[14px] leading-relaxed" style={{ color: 'rgba(14,20,32,0.65)' }}>
+              {published.length} publication{published.length === 1 ? '' : 's'} available. Delivered directly on WhatsApp or immediate download.
             </p>
           </div>
 
           {published.length === 0 ? (
             <div
-              className="mt-12 rounded-2xl border border-dashed py-24 text-center"
-              style={{ borderColor: 'rgba(14,20,32,0.16)' }}
+              className="mt-12 rounded-3xl border border-dashed py-24 text-center"
+              style={{ borderColor: 'rgba(14,20,32,0.18)' }}
             >
-              <p className="font-[Space_Grotesk] text-[19px] font-bold">The shelves are being stocked</p>
+              <p className="font-[Space_Grotesk] text-[20px] font-bold">New editions being prepared</p>
               <p className="mt-2 text-[14px]" style={{ color: 'rgba(14,20,32,0.55)' }}>
-                Our first titles are in final editing. Check back shortly.
+                Titles are currently being finalized. Check back soon.
               </p>
             </div>
           ) : (
-            <div className="mt-12 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
               {published.map((book, i) => (
                 <a
                   key={book.id}
                   href={`#/book/${book.slug}`}
-                  className="group relative flex flex-col overflow-hidden rounded-2xl border bg-white no-underline transition-all duration-300 hover:-translate-y-1.5"
-                  style={{ borderColor: 'rgba(14,20,32,0.09)', boxShadow: '0 1px 2px rgba(14,20,32,0.04)' }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 20px 40px -18px rgba(14,20,32,0.22)')}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 2px rgba(14,20,32,0.04)')}
+                  className="group relative flex flex-col overflow-hidden rounded-3xl border bg-white no-underline transition-all duration-300 hover:-translate-y-1.5"
+                  style={{ borderColor: 'rgba(14,20,32,0.09)', boxShadow: '0 2px 8px rgba(14,20,32,0.04)' }}
+                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 24px 48px -18px rgba(14,20,32,0.22)')}
+                  onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,20,32,0.04)')}
                 >
                   <div
-                    className="relative flex items-center justify-center px-6 py-9"
+                    className="relative flex items-center justify-center px-6 py-10"
                     style={{
                       background:
                         i % 3 === 0
@@ -377,35 +266,35 @@ export default function PublishingHome({ books }: Props) {
                     />
                   </div>
 
-                  <div className="flex flex-1 flex-col p-5">
+                  <div className="flex flex-1 flex-col p-6">
                     <div className="flex items-center justify-between gap-3">
                       <span
-                        className="rounded-full px-2.5 py-1 font-[JetBrains_Mono] text-[9px] font-bold uppercase tracking-[0.14em]"
+                        className="rounded-full px-3 py-1 font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-[0.14em]"
                         style={
                           book.type === 'free'
                             ? { background: 'rgba(79,107,82,0.12)', color: '#3E5A41' }
                             : { background: 'rgba(200,134,42,0.14)', color: '#8A5B18' }
                         }
                       >
-                        {book.type === 'free' ? 'Free' : money(book)}
+                        {book.type === 'free' ? 'Free Access' : money(book)}
                       </span>
                       <span
                         className="font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.14em]"
-                        style={{ color: 'rgba(14,20,32,0.38)' }}
+                        style={{ color: 'rgba(14,20,32,0.4)' }}
                       >
-                        NGS-{String(i + 1).padStart(3, '0')}
+                        VOL-{String(i + 1).padStart(3, '0')}
                       </span>
                     </div>
 
-                    <h3 className="mt-3.5 font-[Space_Grotesk] text-[17px] font-bold leading-snug" style={{ color: '#0E1420' }}>
+                    <h3 className="mt-4 font-[Space_Grotesk] text-[18px] font-bold leading-snug" style={{ color: '#0E1420' }}>
                       {book.title}
                     </h3>
-                    <p className="mt-2 line-clamp-3 flex-1 text-[13px] leading-[1.65]" style={{ color: 'rgba(14,20,32,0.6)' }}>
+                    <p className="mt-2 line-clamp-3 flex-1 text-[13px] leading-[1.65]" style={{ color: 'rgba(14,20,32,0.65)' }}>
                       {book.subtitle}
                     </p>
 
                     <div
-                      className="mt-5 flex items-center justify-between border-t pt-4"
+                      className="mt-6 flex items-center justify-between border-t pt-4"
                       style={{ borderColor: 'rgba(14,20,32,0.08)' }}
                     >
                       <span
@@ -418,7 +307,7 @@ export default function PublishingHome({ books }: Props) {
                         className="font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.12em] transition-transform duration-200 group-hover:translate-x-1"
                         style={{ color: OCHRE }}
                       >
-                        Read more →
+                        Open playbook →
                       </span>
                     </div>
                   </div>
@@ -426,68 +315,64 @@ export default function PublishingHome({ books }: Props) {
               ))}
             </div>
           )}
-
-          {rest.length > 0 && (
-            <p
-              className="mt-10 text-center font-[JetBrains_Mono] text-[10px] uppercase tracking-[0.2em]"
-              style={{ color: 'rgba(14,20,32,0.4)' }}
-            >
-              More titles in production for 2026
-            </p>
-          )}
         </div>
       </section>
 
-      {/* ─────────── Author / Studio ─────────── */}
-      <section id="author" className="border-y py-20" style={{ borderColor: 'rgba(14,20,32,0.08)', background: '#F2EBDD' }}>
+      {/* ─────────── The Mind Behind Nexa ─────────── */}
+      <section id="founder" className="border-y py-20 md:py-28" style={{ borderColor: 'rgba(14,20,32,0.08)', background: '#F2EBDD' }}>
         <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 md:grid-cols-[0.9fr_1.1fr]">
           <div className="relative">
-            <div
-              className="grid aspect-square w-full max-w-[320px] place-items-center rounded-2xl font-[Space_Grotesk] text-[64px] font-black"
-              style={{ background: '#0E1420', color: OCHRE }}
-            >
-              OS
-            </div>
-            <div
-              className="absolute -bottom-4 -right-3 rounded-xl px-4 py-3 shadow-lg"
-              style={{ background: '#FAF7F2', border: '1px solid rgba(14,20,32,0.1)' }}
-            >
-              <p className="font-[Space_Grotesk] text-[13px] font-bold">Olakunle Samuel</p>
-              <p
-                className="font-[JetBrains_Mono] text-[8.5px] uppercase tracking-[0.16em]"
-                style={{ color: 'rgba(14,20,32,0.45)' }}
+            {settings.founderPhoto ? (
+              <div className="relative overflow-hidden rounded-3xl shadow-xl border border-[rgba(14,20,32,0.12)]">
+                <img
+                  src={settings.founderPhoto}
+                  alt={settings.founderName}
+                  className="aspect-[4/5] w-full max-w-[380px] object-cover"
+                />
+              </div>
+            ) : (
+              <div
+                className="grid aspect-[4/5] w-full max-w-[340px] place-items-center rounded-3xl font-[Space_Grotesk] text-[80px] font-black shadow-xl"
+                style={{ background: '#0E1420', color: OCHRE }}
               >
-                Publisher & Author
+                {settings.founderName.split(' ').map(n => n[0]).slice(0, 2).join('') || 'OS'}
+              </div>
+            )}
+
+            <div
+              className="absolute -bottom-5 -right-2 sm:right-6 rounded-2xl px-5 py-4 shadow-xl backdrop-blur-md"
+              style={{ background: '#FAF7F2', border: '1px solid rgba(14,20,32,0.12)' }}
+            >
+              <p className="font-[Space_Grotesk] text-[14px] font-bold text-[#0E1420]">{settings.founderName}</p>
+              <p
+                className="font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.16em] font-semibold mt-0.5"
+                style={{ color: OCHRE }}
+              >
+                {settings.founderRole}
               </p>
             </div>
           </div>
 
           <div>
-            <Eyebrow>From the publisher</Eyebrow>
-            <h2 className="mt-4 font-[Space_Grotesk] text-[28px] font-bold leading-[1.15] tracking-[-0.01em] md:text-[38px]">
-              We write the books we wish we had when we started.
+            <Eyebrow>{settings.founderBadge}</Eyebrow>
+            <h2 className="mt-4 font-[Space_Grotesk] text-[30px] font-bold leading-[1.12] tracking-[-0.02em] md:text-[42px]">
+              "{settings.founderQuote}"
             </h2>
-            <div className="mt-6 space-y-4 text-[15px] leading-[1.75]" style={{ color: 'rgba(14,20,32,0.7)' }}>
-              <p>
-                Nexa Growth Studio began in Ibadan with a simple frustration: most business books
-                sold in Nigeria were written for other economies. The advice didn't survive contact
-                with the market.
-              </p>
-              <p>
-                So we started publishing our own — researched locally, tested with real businesses,
-                and written in plain language that respects your time.
-              </p>
+
+            <div className="mt-6 space-y-4 text-[15px] leading-[1.75]" style={{ color: 'rgba(14,20,32,0.75)' }}>
+              <p>{settings.founderBioParagraph1}</p>
+              <p>{settings.founderBioParagraph2}</p>
             </div>
 
             <div
-              className="mt-8 flex flex-wrap gap-6 border-t pt-6"
+              className="mt-8 flex flex-wrap gap-2.5 border-t pt-6"
               style={{ borderColor: 'rgba(14,20,32,0.12)' }}
             >
-              {['Business strategy', 'Sales & marketing', 'Brand & operations'].map(tag => (
+              {settings.founderTags.map(tag => (
                 <span
                   key={tag}
-                  className="rounded-full px-3 py-1.5 font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.14em]"
-                  style={{ background: 'rgba(14,20,32,0.06)', color: 'rgba(14,20,32,0.6)' }}
+                  className="rounded-full px-3.5 py-1.5 font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ background: '#0E1420', color: '#FAF7F2' }}
                 >
                   {tag}
                 </span>
@@ -497,37 +382,36 @@ export default function PublishingHome({ books }: Props) {
         </div>
       </section>
 
-      {/* ─────────── Newsletter / CTA ─────────── */}
+      {/* ─────────── Direct Reachout & Inquiries ─────────── */}
       <section className="py-20">
         <div className="mx-auto max-w-6xl px-5">
           <div
             className="overflow-hidden rounded-3xl px-8 py-14 text-center md:px-16"
             style={{ background: 'linear-gradient(150deg, #16233B, #0E1420)' }}
           >
-            <Eyebrow tone="light">Stay in the loop</Eyebrow>
-            <h2 className="mx-auto mt-4 max-w-xl font-[Space_Grotesk] text-[27px] font-bold leading-[1.18] text-white md:text-[36px]">
-              Be first to read every new title.
+            <Eyebrow tone="light">Direct Publisher Dispatch</Eyebrow>
+            <h2 className="mx-auto mt-4 max-w-xl font-[Space_Grotesk] text-[28px] font-bold leading-[1.16] text-white md:text-[38px]">
+              {settings.newsletterHeading}
             </h2>
-            <p className="mx-auto mt-4 max-w-md text-[14.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.62)' }}>
-              New playbooks, free chapters and practical business notes — a short letter, a few times
-              a year. No noise.
+            <p className="mx-auto mt-4 max-w-lg text-[14.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>
+              {settings.newsletterSubtitle}
             </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <div className="mt-8 flex flex-wrap justify-center gap-3.5">
               <a
                 href="#catalogue"
-                className="rounded-full px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-transform hover:-translate-y-0.5"
+                className="rounded-full px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline transition-all hover:scale-105 active:scale-95"
                 style={{ background: OCHRE, color: '#0E1420' }}
               >
-                Explore the books
+                Browse Playbooks
               </a>
               <a
-                href={`https://wa.me/2349030192034?text=${encodeURIComponent("Hi Nexa Growth Studio, I'd like to hear about new releases.")}`}
+                href={`https://wa.me/${settings.contactWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi ${settings.founderName}, I would like to inquire about Nexa Growth Studio.`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full border px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline"
-                style={{ borderColor: 'rgba(255,255,255,0.22)', color: '#FAF7F2' }}
+                className="rounded-full border px-7 py-3.5 font-[JetBrains_Mono] text-[11px] font-bold uppercase tracking-[0.14em] no-underline hover:bg-white/5 transition-colors"
+                style={{ borderColor: 'rgba(255,255,255,0.25)', color: '#FAF7F2' }}
               >
-                Contact us
+                Message on WhatsApp
               </a>
             </div>
           </div>
@@ -541,12 +425,12 @@ export default function PublishingHome({ books }: Props) {
             <div className="flex items-center gap-3">
               <Mark />
               <div>
-                <p className="font-[Space_Grotesk] text-[14px] font-bold">Nexa Growth Studio</p>
+                <p className="font-[Space_Grotesk] text-[14px] font-bold">{settings.studioName}</p>
                 <p
                   className="font-[JetBrains_Mono] text-[8.5px] uppercase tracking-[0.2em]"
                   style={{ color: 'rgba(14,20,32,0.45)' }}
                 >
-                  Ibadan, Nigeria
+                  {settings.location}
                 </p>
               </div>
             </div>
@@ -554,13 +438,13 @@ export default function PublishingHome({ books }: Props) {
             <div className="flex flex-wrap gap-x-7 gap-y-2">
               {[
                 { label: 'Catalogue', href: '#catalogue' },
-                { label: 'About', href: '#about' },
-                { label: 'Author', href: '#author' },
+                { label: 'Standard', href: '#manifesto' },
+                { label: 'The Founder', href: '#founder' },
               ].map(link => (
                 <a
                   key={link.href}
                   href={link.href}
-                  className="font-[JetBrains_Mono] text-[10px] uppercase tracking-[0.14em] no-underline"
+                  className="font-[JetBrains_Mono] text-[10.5px] uppercase tracking-[0.14em] no-underline"
                   style={{ color: 'rgba(14,20,32,0.55)' }}
                   onMouseEnter={e => (e.currentTarget.style.color = OCHRE)}
                   onMouseLeave={e => (e.currentTarget.style.color = 'rgba(14,20,32,0.55)')}
@@ -572,14 +456,14 @@ export default function PublishingHome({ books }: Props) {
           </div>
 
           <div
-            className="mt-9 flex flex-col items-start justify-between gap-2 border-t pt-6 md:flex-row md:items-center"
+            className="mt-8 flex flex-col items-start justify-between gap-2 border-t pt-6 md:flex-row md:items-center"
             style={{ borderColor: 'rgba(14,20,32,0.08)' }}
           >
-            <p className="font-[JetBrains_Mono] text-[9.5px] tracking-wide" style={{ color: 'rgba(14,20,32,0.42)' }}>
-              © {new Date().getFullYear()} Nexa Growth Studio. All rights reserved.
+            <p className="font-[JetBrains_Mono] text-[9.5px] tracking-wide" style={{ color: 'rgba(14,20,32,0.45)' }}>
+              © {new Date().getFullYear()} {settings.copyrightText}
             </p>
-            <p className="font-[JetBrains_Mono] text-[9.5px] tracking-wide" style={{ color: 'rgba(14,20,32,0.42)' }}>
-              Published from Ibadan · Olakunle Samuel
+            <p className="font-[JetBrains_Mono] text-[9.5px] tracking-wide" style={{ color: 'rgba(14,20,32,0.45)' }}>
+              Engineered by {settings.founderName}
             </p>
           </div>
         </div>

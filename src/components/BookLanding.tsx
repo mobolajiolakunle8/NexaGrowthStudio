@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Book, Lead } from '../types';
 import { generateId, isValidPhone, normalizePhoneForWA, downloadGuidePdf, saveLeads, loadLeads } from '../storage';
 import { createLeadInCloud } from '../cloud';
@@ -29,11 +29,6 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     phone: phone.length > 0 && !isValidPhone(phone),
   }), [name, email, phone]);
 
-  const inputClass = (invalid: boolean) =>
-    `w-full pl-4 pr-10 py-3 rounded-lg border text-sm focus:outline-none focus:ring-2 text-[#1C1B1F] transition ${
-      invalid ? 'border-red-300 focus:ring-red-300 bg-red-50' : 'border-gray-200 focus:ring-[#C9A227] bg-white'
-    }`;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formComplete) return;
@@ -47,10 +42,8 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     setSubmitting(true);
 
     if (book.type === 'free') {
-      // Download PDF immediately
       downloadGuidePdf(nname, book);
 
-      // Send thank-you + donation info to user's WhatsApp
       const thankYouMsg = [
         `🎉 Hi ${nname}!`,
         '',
@@ -67,29 +60,26 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
 
       window.open(`https://wa.me/${userWA}?text=${encodeURIComponent(thankYouMsg)}`, '_blank');
 
-      // Notify admin
       setTimeout(() => {
         const adminMsg = `📚 New Download: "${book.title}"\n\nName: ${nname}\nEmail: ${nemail}\nPhone: ${nphone}\nTime: ${new Date().toLocaleString()}`;
         window.open(`https://wa.me/${adminWA}?text=${encodeURIComponent(adminMsg)}`, '_blank');
       }, 1200);
     } else {
-      // Paid book — open user's WA to admin with payment intent
       const payMsg = [
-        `💳 Payment for "${book.title}"`,
+        `💳 Payment Request for "${book.title}"`,
         '',
         `Name: ${nname}`,
         `Email: ${nemail}`,
         `Phone: ${nphone}`,
         '',
-        `I'd like to purchase this book.`,
-        book.payment ? `Price: ${book.payment.currency || '₦'}${book.payment.price}` : '',
+        `I would like to purchase this playbook.`,
+        book.payment ? `Price: ${book.payment.currency || '₦'}${book.payment.price?.toLocaleString()}` : '',
         '',
-        `Please confirm payment details. Thank you!`,
+        `Please confirm payment instructions. Thank you!`,
       ].join('\n');
       window.open(`https://wa.me/${adminWA}?text=${encodeURIComponent(payMsg)}`, '_blank');
     }
 
-    // Save lead
     const newLead: Lead = {
       id: generateId(),
       bookId: book.id,
@@ -102,13 +92,15 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     };
     const allLeads = [newLead, ...loadLeads()];
     saveLeads(allLeads);
-    // Append only this lead. A visitor download never rewrites the catalog.
+
     await createLeadInCloud(newLead).catch(error => {
       console.error('Lead cloud save failed:', error);
     });
 
     setResult({ name: nname, email: nemail, phone: nphone });
-    setName(''); setEmail(''); setPhone('');
+    setName('');
+    setEmail('');
+    setPhone('');
     setSubmitting(false);
     setSent(true);
   };
@@ -122,11 +114,10 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
     if (adminCode === book.adminPasscode) {
       onAdminAccess();
     } else {
-      setAdminErr('Incorrect passcode.');
+      setAdminErr('Incorrect passcode for this playbook.');
     }
   };
 
-  // Hash-based admin access for this book
   useMemo(() => {
     const checkHash = () => {
       const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
@@ -140,200 +131,339 @@ export default function BookLanding({ book, onAdminAccess }: Props) {
   }, [book.slug]);
 
   const isFree = book.type === 'free';
+  const priceDisplay = book.payment ? `${book.payment.currency || '₦'}${book.payment.price?.toLocaleString()}` : '';
 
   return (
-    <div className="min-h-screen bg-[#F7F5EF] text-[#1C1B1F] font-[Inter] flex flex-col justify-between">
-      {/* Hero */}
+    <div className="min-h-screen bg-[#FAF7F2] text-[#0E1420] font-[Inter] flex flex-col justify-between selection:bg-[#C8862A] selection:text-[#0E1420]">
       <div>
-        <section className="bg-[#152447] px-6 pt-[56px] pb-[70px] text-center relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-amber-300 to-amber-600 opacity-70" />
-          <p className="font-[JetBrains_Mono] text-[11px] tracking-[2.4px] uppercase text-[#C9A227] mb-4">{book.kicker}</p>
-          <h1 className="font-[Space_Grotesk] font-bold text-[30px] md:text-[38px] text-white max-w-[600px] mx-auto leading-[1.22]">{book.title}</h1>
-          <p className="text-[15px] md:text-[16px] text-[#C7CCDA] max-w-[460px] mx-auto mt-[18px] leading-[1.6]">{book.subtitle}</p>
-          {!isFree && book.payment && (
-            <div className="inline-flex items-center gap-2 bg-amber-500 text-slate-950 font-bold text-lg px-6 py-2 rounded-full mt-5">
-              {book.payment.currency || '₦'}{book.payment.price?.toLocaleString()}
+        {/* Navigation bar */}
+        <header className="border-b border-[rgba(14,20,32,0.08)] bg-[#FAF7F2]/90 backdrop-blur-md sticky top-0 z-30">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
+            <a href="#/" className="inline-flex items-center gap-2.5 text-xs font-[JetBrains_Mono] uppercase tracking-[0.18em] text-[#0E1420]/70 hover:text-[#C8862A] transition-colors no-underline">
+              <span>← Nexa Growth Studio</span>
+            </a>
+            <div className="flex items-center gap-3">
+              <span className={`text-[10px] font-[JetBrains_Mono] uppercase font-bold tracking-widest px-2.5 py-1 rounded-full ${
+                isFree ? 'bg-[#4F6B52]/10 text-[#4F6B52]' : 'bg-[#C8862A]/15 text-[#9A6218]'
+              }`}>
+                {isFree ? 'Free Playbook' : priceDisplay}
+              </span>
+              <button
+                onClick={() => setOpen(true)}
+                className="hidden sm:inline-flex rounded-full bg-[#0E1420] px-4 py-1.5 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.14em] text-[#FAF7F2] hover:bg-[#C8862A] hover:text-[#0E1420] transition-colors"
+              >
+                {isFree ? 'Get free copy' : 'Order playbook'}
+              </button>
             </div>
-          )}
+          </div>
+        </header>
+
+        {/* Hero Banner with Rich Warm Ink/Ochre Aesthetic */}
+        <section className="relative overflow-hidden bg-[#0E1420] text-[#FAF7F2] px-6 pt-16 pb-24 md:pt-20 md:pb-32 border-b border-[#C8862A]/20">
+          <div className="pointer-events-none absolute inset-0 opacity-25 bg-[radial-gradient(#C8862A_1px,transparent_1px)] [background-size:24px_24px]" />
+          <div className="pointer-events-none absolute -top-32 right-1/4 h-96 w-96 rounded-full bg-[#C8862A]/15 blur-3xl" />
+
+          <div className="relative mx-auto max-w-4xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#C8862A]/30 bg-[#C8862A]/10 px-3.5 py-1 text-[10px] font-[JetBrains_Mono] font-semibold uppercase tracking-[0.22em] text-[#C8862A] mb-5">
+              <span>{book.kicker || (isFree ? 'Free Business Playbook' : 'Executive Edition')}</span>
+            </div>
+
+            <h1 className="font-[Space_Grotesk] font-bold text-[34px] sm:text-[46px] md:text-[56px] leading-[1.08] tracking-[-0.02em] max-w-3xl mx-auto text-white">
+              {book.title}
+            </h1>
+
+            <p className="mt-5 text-[15px] sm:text-[17px] text-[#FAF7F2]/75 max-w-2xl mx-auto leading-[1.65]">
+              {book.subtitle}
+            </p>
+
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+              <button
+                onClick={() => { setSent(false); setResult(null); setOpen(true); }}
+                className="rounded-full bg-[#C8862A] px-7 py-3.5 font-[JetBrains_Mono] text-xs font-bold uppercase tracking-[0.16em] text-[#0E1420] hover:scale-105 active:scale-95 transition-all shadow-[0_12px_32px_rgba(200,134,42,0.35)] cursor-pointer"
+              >
+                {isFree ? 'Get Free Instant Access →' : `Purchase Playbook — ${priceDisplay} →`}
+              </button>
+              <a
+                href="#details"
+                className="rounded-full border border-white/20 px-6 py-3.5 font-[JetBrains_Mono] text-xs font-semibold uppercase tracking-[0.14em] text-[#FAF7F2] hover:bg-white/5 transition-colors no-underline"
+              >
+                Inspect Contents
+              </a>
+            </div>
+          </div>
         </section>
 
-        {/* Book Cover */}
-        <div className="flex justify-center -mt-[52px] mb-[44px] px-6 relative z-10">
-          <BookCover book={book} size="md" rotate />
+        {/* Floating Book Cover Preview */}
+        <div className="relative z-10 -mt-16 md:-mt-20 flex justify-center px-6">
+          <div className="relative group">
+            <div className="absolute -inset-4 rounded-2xl bg-gradient-to-b from-[#C8862A]/30 to-transparent blur-xl opacity-60 group-hover:opacity-100 transition-opacity" />
+            <div className="relative">
+              <BookCover book={book} size="lg" rotate className="hover:rotate-0 transition-transform duration-300 drop-shadow-2xl" />
+            </div>
+          </div>
         </div>
 
-        {/* Content */}
-        <main className="max-w-[520px] mx-auto px-6 pb-[70px]">
-          <section className="mb-9">
-            <h3 className="font-[JetBrains_Mono] font-semibold text-[11px] tracking-[1.6px] uppercase text-[#152447] mb-4 text-center">What's Inside</h3>
-            <div className="flex flex-col gap-3">
-              {book.whatsInside.map((text, i) => (
-                <div key={i} className="flex gap-3 bg-white border border-[rgba(21,36,71,0.08)] rounded-[10px] p-[14px_16px] shadow-sm">
-                  <span className="w-[7px] h-[7px] rounded-full bg-[#C9A227] mt-[6px] shrink-0" />
-                  <p className="text-[13.5px] text-[#3A3835] leading-[1.5]">{text}</p>
+        {/* Content Section */}
+        <main id="details" className="mx-auto max-w-3xl px-6 pt-16 pb-24">
+          {/* Quick Specs Strip */}
+          <div className="grid grid-cols-3 gap-3 rounded-2xl border border-[rgba(14,20,32,0.08)] bg-white p-5 text-center shadow-sm mb-14">
+            <div>
+              <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Format</p>
+              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">PDF Playbook</p>
+            </div>
+            <div className="border-x border-[rgba(14,20,32,0.08)]">
+              <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Access</p>
+              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">{isFree ? 'Instant Free' : 'Verified Purchase'}</p>
+            </div>
+            <div>
+              <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Author</p>
+              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1 truncate px-1">{book.author}</p>
+            </div>
+          </div>
+
+          {/* What's Inside */}
+          <section className="mb-14">
+            <div className="text-center mb-8">
+              <p className="font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.25em] text-[#C8862A]">What You Will Master</p>
+              <h2 className="font-[Space_Grotesk] text-[26px] md:text-[32px] font-bold tracking-tight text-[#0E1420] mt-2">
+                Designed to be applied the same week you read it.
+              </h2>
+            </div>
+
+            <div className="space-y-3.5">
+              {book.whatsInside.map((item, idx) => (
+                <div key={idx} className="flex gap-4 rounded-2xl border border-[rgba(14,20,32,0.08)] bg-white p-5 shadow-sm transition-transform hover:-translate-y-0.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#0E1420] text-[#C8862A] font-[JetBrains_Mono] text-xs font-bold">
+                    {idx + 1}
+                  </div>
+                  <p className="text-[14.5px] leading-[1.65] text-[#0E1420]/80 pt-0.5 font-medium">
+                    {item}
+                  </p>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* CTA */}
-          <section className="bg-[#152447] rounded-[14px] p-[32px_26px] text-center shadow-lg">
-            <h2 className="font-[Space_Grotesk] font-semibold text-[19px] text-white mb-2">{book.ctaTitle}</h2>
-            <p className="text-[13.5px] text-[#C7CCDA] mb-5 leading-[1.5]">{book.ctaSubtitle}</p>
+          {/* Author / Origin Note */}
+          <section className="rounded-2xl border border-[rgba(14,20,32,0.08)] bg-[#F2EBDD] p-7 md:p-9 mb-14">
+            <p className="font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-[0.22em] text-[#C8862A]">Publishing Context</p>
+            <h3 className="font-[Space_Grotesk] font-bold text-xl text-[#0E1420] mt-2">
+              Written for the realities of doing business in Nigeria.
+            </h3>
+            <p className="text-[14px] leading-[1.7] text-[#0E1420]/75 mt-3">
+              This publication is engineered by {book.author} at {book.authorRole}. It cuts out generic Western templates in favour of practical commercial realities, local customer behaviour, and realistic execution.
+            </p>
+          </section>
+
+          {/* Call to action card */}
+          <section className="rounded-3xl bg-[#0E1420] text-white p-8 md:p-12 text-center relative overflow-hidden shadow-xl">
+            <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-[#C8862A]/20 blur-3xl" />
+            <p className="font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.25em] text-[#C8862A] mb-2">{isFree ? 'Zero Strings Attached' : 'Instant Direct Fulfillment'}</p>
+            <h2 className="font-[Space_Grotesk] font-bold text-[28px] md:text-[36px] text-white">
+              {book.ctaTitle || (isFree ? 'Claim your free copy now' : 'Secure your playbook copy')}
+            </h2>
+            <p className="text-[14px] text-white/70 max-w-md mx-auto mt-3 leading-relaxed">
+              {book.ctaSubtitle || (isFree ? 'Tap below and it is yours — read it at your pace with no follow-up required.' : 'Enter your details, confirm payment, and receive the direct download link instantly.')}
+            </p>
+
             <button
               onClick={() => { setSent(false); setResult(null); setOpen(true); }}
-              className="inline-flex items-center gap-2 bg-[#C9A227] text-[#0D1830] font-bold text-[14px] px-[30px] py-[14px] rounded-full border-none cursor-pointer hover:bg-[#E4C766] transition-colors shadow-md"
+              className="mt-8 rounded-full bg-[#C8862A] px-8 py-4 font-[JetBrains_Mono] text-xs font-bold uppercase tracking-[0.16em] text-[#0E1420] hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
             >
-              {isFree ? 'Download Free →' : `Get the Book — ${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString() || ''} →`}
+              {isFree ? 'Get Instant Download Link →' : `Order for ${priceDisplay} →`}
             </button>
           </section>
         </main>
       </div>
 
       {/* Footer */}
-      <footer className="text-center pb-8 pt-4 border-t border-[rgba(21,36,71,0.08)] px-6">
-        <div className="font-[Space_Grotesk] font-semibold text-[14px]">{book.author}</div>
-        <div className="font-[JetBrains_Mono] text-[10px] tracking-[0.6px] text-[#6B6860] uppercase mt-[3px]">{book.authorRole}</div>
+      <footer className="border-t border-[rgba(14,20,32,0.08)] bg-white py-8 px-6 text-center">
+        <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420]">{book.author}</p>
+        <p className="font-[JetBrains_Mono] text-[10px] uppercase tracking-[0.18em] text-[#0E1420]/50 mt-1">
+          {book.authorRole} · Nexa Growth Studio
+        </p>
       </footer>
 
-      {/* Lead / Purchase Form Popup */}
+      {/* Modal: Lead Generation / Purchase Form */}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-[#0E1420]/80 backdrop-blur-sm flex items-center justify-center px-5 py-8 overflow-y-auto" onClick={() => setOpen(false)}>
+          <div className="bg-[#FAF7F2] border border-[rgba(14,20,32,0.12)] text-[#0E1420] rounded-3xl p-7 md:p-9 max-w-md w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
             {sent && result ? (
               <div className="text-center py-2">
-                <div className="text-4xl mb-2">{isFree ? '🎉' : '💳'}</div>
-                <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#152447] mb-2">
-                  {isFree ? `Thank You, ${result.name}!` : `Almost There, ${result.name}!`}
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#C8862A]/20 flex items-center justify-center text-[#C8862A] text-xl font-bold">✓</div>
+                <h3 className="font-[Space_Grotesk] text-2xl font-bold text-[#0E1420] mb-2">
+                  {isFree ? `You're all set, ${result.name}!` : `Order Submitted, ${result.name}!`}
                 </h3>
 
                 {isFree ? (
                   <>
-                    <p className="text-sm text-[#3A3835] mb-4 leading-relaxed">
-                      {book.donation?.thankYouMessage || `Thank you for downloading "${book.title}"!`}
+                    <p className="text-sm text-[#0E1420]/75 mb-5 leading-relaxed">
+                      {book.donation?.thankYouMessage || `Thank you for requesting "${book.title}". Your copy has been triggered.`}
                     </p>
 
                     {book.donation && (
-                      <div className="bg-gradient-to-br from-[#152447] to-[#0D1830] rounded-xl p-5 text-left mb-4">
-                        <p className="text-[#C9A227] font-[JetBrains_Mono] text-[10px] uppercase tracking-wider mb-2">❤️ Support Our Work</p>
-                        <p className="text-[#C7CCDA] text-xs leading-relaxed mb-3">{book.donation.donationMessage}</p>
-                        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-1.5">
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Account Name</span><span className="text-sm text-white font-semibold">{book.donation.accountName}</span></div>
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Account No.</span><span className="text-sm text-[#C9A227] font-mono font-bold tracking-wider">{book.donation.accountNumber}</span></div>
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Bank</span><span className="text-sm text-white font-semibold">{book.donation.bankName}</span></div>
+                      <div className="rounded-2xl border border-[rgba(14,20,32,0.1)] bg-[#0E1420] text-[#FAF7F2] p-5 text-left mb-5 shadow-inner">
+                        <p className="text-[#C8862A] font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.2em] mb-1">❤️ Appreciation & Support</p>
+                        <p className="text-xs text-[#FAF7F2]/75 leading-relaxed mb-3.5">{book.donation.donationMessage}</p>
+                        <div className="space-y-1.5 rounded-xl bg-white/5 border border-white/10 p-3 text-xs">
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Account</span><span className="font-semibold text-white">{book.donation.accountName}</span></div>
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Number</span><span className="font-mono text-[#C8862A] font-bold">{book.donation.accountNumber}</span></div>
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Bank</span><span className="font-semibold text-white">{book.donation.bankName}</span></div>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-2 text-center">Any amount is deeply appreciated 🙏</p>
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2.5">
                       <button
                         onClick={() => downloadGuidePdf(result.name, book)}
-                        className="w-full bg-[#C9A227] text-[#0D1830] font-bold text-sm py-3 rounded-full hover:bg-[#E4C766] transition"
+                        className="w-full rounded-full bg-[#C8862A] text-[#0E1420] font-[JetBrains_Mono] font-bold text-xs py-3.5 hover:opacity-90 transition-opacity"
                       >
-                        ⬇ Download Again
+                        ⬇ Download PDF Directly
                       </button>
                       <a
                         href={`https://wa.me/${book.adminWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi, I just downloaded "${book.title}". Thank you!`)}`}
                         target="_blank" rel="noreferrer"
-                        className="w-full bg-[#25D366] text-white font-bold text-sm py-3 rounded-full hover:bg-[#1eb857] transition no-underline"
+                        className="w-full rounded-full border border-[rgba(14,20,32,0.15)] bg-white text-[#0E1420] font-[JetBrains_Mono] font-bold text-xs py-3.5 text-center no-underline hover:bg-[#FAF7F2] transition-colors"
                       >
-                        💬 Chat with Us
+                        💬 Connect with Publisher on WhatsApp
                       </a>
                     </div>
                   </>
                 ) : (
                   <>
-                    <p className="text-sm text-[#3A3835] mb-4 leading-relaxed">
-                      Your purchase request has been sent. To complete your order, make your payment and send us your proof.
+                    <p className="text-sm text-[#0E1420]/75 mb-5 leading-relaxed">
+                      Your order is logged. Complete payment to receive your direct download link automatically on WhatsApp.
                     </p>
                     {book.payment && (
-                      <div className="bg-gradient-to-br from-[#152447] to-[#0D1830] rounded-xl p-5 text-left mb-4">
-                        <p className="text-[#C9A227] font-[JetBrains_Mono] text-[10px] uppercase tracking-wider mb-2">💳 Payment Details</p>
-                        <p className="text-[#C7CCDA] text-xs mb-3">{book.payment.paymentNote}</p>
-                        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-1.5">
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Account Name</span><span className="text-sm text-white font-semibold">{book.payment.accountName}</span></div>
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Account No.</span><span className="text-sm text-[#C9A227] font-mono font-bold tracking-wider">{book.payment.accountNumber}</span></div>
-                          <div className="flex justify-between"><span className="text-[10px] text-slate-400 uppercase">Bank</span><span className="text-sm text-white font-semibold">{book.payment.bankName}</span></div>
-                          <div className="flex justify-between border-t border-white/10 pt-2 mt-2"><span className="text-[10px] text-slate-400 uppercase">Amount</span><span className="text-base text-amber-400 font-bold">{book.payment.currency || '₦'}{book.payment.price?.toLocaleString()}</span></div>
+                      <div className="rounded-2xl border border-[rgba(14,20,32,0.1)] bg-[#0E1420] text-[#FAF7F2] p-5 text-left mb-5 shadow-inner">
+                        <p className="text-[#C8862A] font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.2em] mb-1">💳 Transfer Details</p>
+                        <p className="text-xs text-[#FAF7F2]/75 leading-relaxed mb-3.5">{book.payment.paymentNote}</p>
+                        <div className="space-y-1.5 rounded-xl bg-white/5 border border-white/10 p-3 text-xs">
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Account</span><span className="font-semibold text-white">{book.payment.accountName}</span></div>
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Number</span><span className="font-mono text-[#C8862A] font-bold">{book.payment.accountNumber}</span></div>
+                          <div className="flex justify-between"><span className="text-white/50 text-[10px] uppercase">Bank</span><span className="font-semibold text-white">{book.payment.bankName}</span></div>
+                          <div className="flex justify-between pt-2 border-t border-white/10"><span className="text-white/50 text-[10px] uppercase">Amount</span><span className="font-bold text-[#C8862A]">{priceDisplay}</span></div>
                         </div>
                       </div>
                     )}
                     <a
-                      href={`https://wa.me/${book.adminWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi! I just paid for "${book.title}". Name: ${result.name}, Email: ${result.email}. Please send me the book.`)}`}
+                      href={`https://wa.me/${book.adminWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi! I just paid for "${book.title}". Name: ${result.name}, Email: ${result.email}. Please verify and send download link.`)}`}
                       target="_blank" rel="noreferrer"
-                      className="w-full bg-[#25D366] text-white font-bold text-sm py-3 rounded-full hover:bg-[#1eb857] transition no-underline flex items-center justify-center"
+                      className="w-full rounded-full bg-[#25D366] text-white font-[JetBrains_Mono] font-bold text-xs py-3.5 text-center no-underline flex items-center justify-center hover:opacity-90 transition-opacity"
                     >
                       📲 Send Payment Proof on WhatsApp
                     </a>
                   </>
                 )}
 
-                <button onClick={() => { setOpen(false); setSent(false); setResult(null); }} className="mt-4 text-xs text-[#6B6860] underline">Back to Page</button>
+                <button onClick={() => { setOpen(false); setSent(false); setResult(null); }} className="mt-5 text-xs font-[JetBrains_Mono] text-[#0E1420]/50 hover:text-[#0E1420] underline">
+                  Back to playbook
+                </button>
               </div>
             ) : (
               <>
-                <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#152447] mb-1">
-                  {isFree ? 'Get the Book Free' : `Get "${book.title}"`}
-                </h3>
-                <p className="text-xs text-[#6B6860] mb-4">
-                  {isFree ? 'Fill in your details — delivered instantly.' : `Fill in your details to proceed with your ${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString()} purchase.`}
-                </p>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
-                  <div className="flex flex-col">
-                    <label className="text-[10px] font-semibold text-[#152447] mb-1 uppercase tracking-wider">Full Name</label>
-                    <div className="relative">
-                      <input type="text" placeholder="e.g. Tunde Alao" value={name} onChange={e => setName(e.target.value)} className={inputClass(fieldStatus.name)} />
-                      {isValidName(name) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 text-sm">✓</span>}
-                    </div>
-                    {fieldStatus.name && <p className="text-[10px] text-red-500 mt-1">Enter at least 2 characters.</p>}
+                <div className="mb-5">
+                  <p className="font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-[0.22em] text-[#C8862A]">{isFree ? 'Instant Access' : 'Secure Order'}</p>
+                  <h3 className="font-[Space_Grotesk] text-2xl font-bold text-[#0E1420] mt-1">
+                    {isFree ? 'Download this playbook' : `Order "${book.title}"`}
+                  </h3>
+                  <p className="text-xs text-[#0E1420]/65 mt-1.5">
+                    {isFree ? 'Enter your details below. The PDF is delivered to you immediately.' : `Enter your details to generate your order for ${priceDisplay}.`}
+                  </p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" noValidate>
+                  <div>
+                    <label className="text-[10px] font-[JetBrains_Mono] font-semibold text-[#0E1420]/70 uppercase tracking-wider block mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Tunde Alao"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      className={`w-full rounded-xl border px-3.5 py-3 text-sm focus:outline-none transition-colors ${
+                        fieldStatus.name ? 'border-red-400 bg-red-50/50' : 'border-[rgba(14,20,32,0.15)] bg-white focus:border-[#C8862A]'
+                      }`}
+                    />
+                    {fieldStatus.name && <p className="text-[10px] text-red-500 mt-1">Please enter at least 2 characters.</p>}
                   </div>
-                  <div className="flex flex-col">
-                    <label className="text-[10px] font-semibold text-[#152447] mb-1 uppercase tracking-wider">Email Address</label>
-                    <div className="relative">
-                      <input type="email" placeholder="e.g. tunde@company.ng" value={email} onChange={e => setEmail(e.target.value)} className={inputClass(fieldStatus.email)} />
-                      {isValidEmail(email) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 text-sm">✓</span>}
-                    </div>
+
+                  <div>
+                    <label className="text-[10px] font-[JetBrains_Mono] font-semibold text-[#0E1420]/70 uppercase tracking-wider block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="e.g. tunde@company.ng"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      className={`w-full rounded-xl border px-3.5 py-3 text-sm focus:outline-none transition-colors ${
+                        fieldStatus.email ? 'border-red-400 bg-red-50/50' : 'border-[rgba(14,20,32,0.15)] bg-white focus:border-[#C8862A]'
+                      }`}
+                    />
                     {fieldStatus.email && <p className="text-[10px] text-red-500 mt-1">Enter a valid email address.</p>}
                   </div>
-                  <div className="flex flex-col">
-                    <label className="text-[10px] font-semibold text-[#152447] mb-1 uppercase tracking-wider">Phone / WhatsApp</label>
-                    <div className="relative">
-                      <input type="tel" placeholder="+2349030192034 or 08123456789" value={phone} onChange={e => setPhone(e.target.value)} className={inputClass(fieldStatus.phone)} />
-                      {isValidPhone(phone) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 text-sm">✓</span>}
-                    </div>
+
+                  <div>
+                    <label className="text-[10px] font-[JetBrains_Mono] font-semibold text-[#0E1420]/70 uppercase tracking-wider block mb-1">WhatsApp Phone Number</label>
+                    <input
+                      type="tel"
+                      placeholder="+2349030192034 or 08123456789"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      className={`w-full rounded-xl border px-3.5 py-3 text-sm focus:outline-none transition-colors ${
+                        fieldStatus.phone ? 'border-red-400 bg-red-50/50' : 'border-[rgba(14,20,32,0.15)] bg-white focus:border-[#C8862A]'
+                      }`}
+                    />
                     {fieldStatus.phone && <p className="text-[10px] text-red-500 mt-1">Enter a complete phone number.</p>}
                   </div>
+
                   <button
                     type="submit"
                     disabled={!formComplete || submitting}
-                    className={`mt-2 font-bold text-sm py-3.5 rounded-full transition-colors shadow-md ${
-                      formComplete ? 'bg-[#C9A227] text-[#0D1830] hover:bg-[#E4C766] cursor-pointer animate-pulse' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    className={`mt-2 rounded-full py-3.5 font-[JetBrains_Mono] text-xs font-bold uppercase tracking-[0.16em] transition-all cursor-pointer ${
+                      formComplete
+                        ? 'bg-[#C8862A] text-[#0E1420] hover:scale-[1.02] active:scale-98 shadow-md'
+                        : 'bg-[rgba(14,20,32,0.12)] text-[#0E1420]/40 cursor-not-allowed'
                     }`}
                   >
-                    {submitting ? 'Processing…' : (isFree ? 'Get Instant Access →' : `Pay ${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString()} →`)}
+                    {submitting ? 'Delivering...' : isFree ? 'Get Instant Access →' : `Proceed to Pay ${priceDisplay} →`}
                   </button>
-                  {!formComplete && <p className="text-[10px] text-[#6B6860] text-center -mt-1">🔒 Complete all fields to unlock</p>}
+                  {!formComplete && <p className="text-[10px] text-[#0E1420]/50 text-center">Fill all fields to unlock</p>}
                 </form>
               </>
             )}
-            <button onClick={() => { setOpen(false); setSent(false); setResult(null); }} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold">✕</button>
+
+            <button
+              onClick={() => { setOpen(false); setSent(false); setResult(null); }}
+              className="absolute top-5 right-5 text-[#0E1420]/40 hover:text-[#0E1420] text-sm font-bold"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
 
-      {/* Book-Level Admin Passcode Modal */}
+      {/* Secret Book Admin Passcode Modal */}
       {passcodeOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6" onClick={() => setPasscodeOpen(false)}>
-          <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <h3 className="font-[Space_Grotesk] text-lg font-bold text-amber-400 mb-1">🔐 Book Admin Access</h3>
-            <p className="text-xs text-slate-400 mb-4">Enter the passcode for "{book.title}"</p>
+        <div className="fixed inset-0 z-50 bg-[#0E1420]/80 backdrop-blur-sm flex items-center justify-center px-6" onClick={() => setPasscodeOpen(false)}>
+          <div className="bg-[#0E1420] border border-[#C8862A]/30 text-white rounded-3xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-[0.2em] text-[#C8862A]">Book Management</p>
+            <h3 className="font-[Space_Grotesk] text-lg font-bold text-white mt-1">Unlock "{book.title}"</h3>
+            <p className="text-xs text-white/60 mt-1 mb-4">Enter this book's dedicated admin passcode.</p>
             <form onSubmit={handleAdminCheck} className="flex flex-col gap-3">
-              <input required type="password" placeholder="Enter book passcode" value={adminCode} onChange={e => setAdminCode(e.target.value)} className="bg-slate-950 border border-slate-800 px-4 py-3 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-center tracking-widest font-mono" autoFocus />
+              <input
+                required
+                type="password"
+                placeholder="Enter passcode"
+                value={adminCode}
+                onChange={e => setAdminCode(e.target.value)}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-center font-mono text-white focus:outline-none focus:border-[#C8862A]"
+                autoFocus
+              />
               {adminErr && <p className="text-xs text-red-400 text-center">{adminErr}</p>}
-              <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm py-3 rounded-full transition">Unlock Dashboard</button>
+              <button type="submit" className="rounded-full bg-[#C8862A] py-3 text-xs font-[JetBrains_Mono] font-bold uppercase tracking-wider text-[#0E1420] hover:opacity-90">
+                Unlock Dashboard
+              </button>
             </form>
-            <button onClick={() => setPasscodeOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 font-bold">✕</button>
+            <button onClick={() => setPasscodeOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
           </div>
         </div>
       )}

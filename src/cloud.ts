@@ -10,8 +10,13 @@ import {
   update,
 } from 'firebase/database';
 import { getDownloadURL, getStorage, ref as storageRef, uploadBytes } from 'firebase/storage';
-import type { Book, Lead } from './types';
-import { BOOKS_STORAGE_KEY, LEADS_STORAGE_KEY } from './types';
+import type { Book, Lead, SiteSettings } from './types';
+import {
+  BOOKS_STORAGE_KEY,
+  LEADS_STORAGE_KEY,
+  SITE_SETTINGS_STORAGE_KEY,
+  DEFAULT_SITE_SETTINGS,
+} from './types';
 
 const env = import.meta.env;
 const databaseURL = (env.VITE_FIREBASE_DATABASE_URL || 'https://nexa-growth-studio-default-rtdb.firebaseio.com')
@@ -31,10 +36,11 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const storage = getStorage(app);
 
-// V2 isolates the reliable schema from older array/nested-array experiments.
+// V2 isolated schema
 const rootRef = ref(db, 'nexa/v2');
 const catalogRef = ref(db, 'nexa/v2/catalog');
 const leadsRef = ref(db, 'nexa/v2/leads');
+const settingsRef = ref(db, 'nexa/v2/settings');
 const legacyBooksRef = ref(db, 'nexa/books');
 const legacyLeadsRef = ref(db, 'nexa/leads');
 
@@ -74,35 +80,42 @@ const encodeBooks = (books: Book[]) => Object.fromEntries(
   books.filter(isBook).map(book => [book.id, JSON.parse(JSON.stringify(book))]),
 );
 
-export function readLocal(): { books: Book[]; leads: Lead[] } {
+export function readLocal(): { books: Book[]; leads: Lead[]; settings: SiteSettings } {
   let books: Book[] = [];
   let leads: Lead[] = [];
+  let settings: SiteSettings = DEFAULT_SITE_SETTINGS;
   try {
     const raw = localStorage.getItem(BOOKS_STORAGE_KEY);
     if (raw) books = JSON.parse(raw) as Book[];
-  } catch { /* local fallback is optional */ }
+  } catch { /* ignore */ }
   try {
     const raw = localStorage.getItem(LEADS_STORAGE_KEY);
     if (raw) leads = JSON.parse(raw) as Lead[];
-  } catch { /* local fallback is optional */ }
-  return { books, leads };
+  } catch { /* ignore */ }
+  try {
+    const raw = localStorage.getItem(SITE_SETTINGS_STORAGE_KEY);
+    if (raw) settings = { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { books, leads, settings };
 }
 
-export function writeLocal(books: Book[], leads: Lead[]) {
-  try { localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(books)); } catch { /* storage quota */ }
-  try { localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(leads)); } catch { /* storage quota */ }
+export function writeLocal(books: Book[], leads: Lead[], settings?: SiteSettings) {
+  try { localStorage.setItem(BOOKS_STORAGE_KEY, JSON.stringify(books)); } catch { /* ignore */ }
+  try { localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(leads)); } catch { /* ignore */ }
+  if (settings) {
+    try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+  }
 }
 
-/** Initialize once; an intentionally empty catalog remains empty. */
 export async function bootstrapCloud(fallbackBooks: Book[]) {
   const [legacyBooks, legacyLeads] = await Promise.all([
-    get(legacyBooksRef),
-    get(legacyLeadsRef),
+    get(legacyBooksRef).catch(() => null),
+    get(legacyLeadsRef).catch(() => null),
   ]);
-  const migratedBooks = decodeBooks(legacyBooks.val());
-  const migratedLeads = decodeLeads(
-    (legacyLeads.val() as { leads?: unknown } | null)?.leads ?? legacyLeads.val(),
-  );
+  const migratedBooks = legacyBooks ? decodeBooks(legacyBooks.val()) : [];
+  const migratedLeads = legacyLeads
+    ? decodeLeads((legacyLeads.val() as { leads?: unknown } | null)?.leads ?? legacyLeads.val())
+    : [];
   const initialBooks = migratedBooks.length ? migratedBooks : fallbackBooks;
 
   const result = await runTransaction(catalogRef, current => {
@@ -114,45 +127,66 @@ export async function bootstrapCloud(fallbackBooks: Book[]) {
     } satisfies CatalogPayload;
   }, { applyLocally: false });
 
-  const leadSnapshot = await get(leadsRef);
-  if (!leadSnapshot.exists() && migratedLeads.length) {
-    await Promise.all(migratedLeads.map(createLeadInCloud));
+  const [leadSnapshot, settingsSnapshot] = await Promise.all([
+    get(leadsRef).catch(() => null),
+    get(settingsRef).catch(() => null),
+  ]);
+
+  if (leadSnapshot && !leadSnapshot.exists() && migratedLeads.length) {
+    await Promise.all(migratedLeads.map(createLeadInCloud)).catch(() => null);
   }
+
+  let cloudSettings = DEFAULT_SITE_SETTINGS;
+  if (settingsSnapshot && settingsSnapshot.exists()) {
+    cloudSettings = { ...DEFAULT_SITE_SETTINGS, ...(settingsSnapshot.val() as SiteSettings) };
+    try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(cloudSettings)); } catch { /* ignore */ }
+  }
+
   return {
     books: decodeBooks(result.snapshot.val()),
-    leads: leadSnapshot.exists() ? decodeLeads(leadSnapshot.val()) : migratedLeads,
+    leads: leadSnapshot && leadSnapshot.exists() ? decodeLeads(leadSnapshot.val()) : migratedLeads,
+    settings: cloudSettings,
   };
 }
 
-export function startLiveSync(callback: (books: Book[], leads: Lead[]) => void) {
-  let books = readLocal().books;
-  let leads = readLocal().leads;
-  const emit = () => callback(books, leads);
+export function startLiveSync(
+  callback: (books: Book[], leads: Lead[], settings: SiteSettings) => void
+) {
+  let { books, leads, settings } = readLocal();
+  const emit = () => callback(books, leads, settings);
 
   const stopBooks = onValue(catalogRef, snapshot => {
     if (!snapshot.exists()) return;
     books = decodeBooks(snapshot.val());
-    writeLocal(books, leads);
+    writeLocal(books, leads, settings);
     emit();
   }, error => console.error('Book sync failed:', error));
 
   const stopLeads = onValue(leadsRef, snapshot => {
     leads = decodeLeads(snapshot.val());
-    writeLocal(books, leads);
+    writeLocal(books, leads, settings);
     emit();
   }, error => console.error('Lead sync failed:', error));
+
+  const stopSettings = onValue(settingsRef, snapshot => {
+    if (snapshot.exists()) {
+      settings = { ...DEFAULT_SITE_SETTINGS, ...(snapshot.val() as SiteSettings) };
+      try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+      emit();
+    }
+  }, error => console.error('Settings sync failed:', error));
 
   return () => {
     stopBooks();
     stopLeads();
+    stopSettings();
   };
 }
 
 export function stopLiveSync() {
-  // Listeners are closed by the unsubscribe returned from startLiveSync.
+  // handled by cleanup returned from startLiveSync
 }
 
-/** Book writes never touch leads. */
 export async function saveBooksToCloud(books: Book[]) {
   const payload: CatalogPayload = {
     initialized: true,
@@ -161,14 +195,22 @@ export async function saveBooksToCloud(books: Book[]) {
   };
   await set(catalogRef, payload);
   const local = readLocal();
-  writeLocal(books, local.leads);
+  writeLocal(books, local.leads, local.settings);
   localStorage.setItem('nexa_cloud_last_sync', payload.updatedAt);
   return true;
 }
 
 export const autoSyncBooks = async (books: Book[]) => saveBooksToCloud(books);
 
-/** Lead creation appends one unique child and can never remove a book. */
+export async function saveSiteSettingsToCloud(settings: SiteSettings) {
+  await set(settingsRef, JSON.parse(JSON.stringify(settings)));
+  try {
+    localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem('nexa_cloud_last_sync', new Date().toISOString());
+  } catch { /* ignore */ }
+  return true;
+}
+
 export async function createLeadInCloud(lead: Lead) {
   await set(ref(db, `nexa/v2/leads/${lead.id}`), JSON.parse(JSON.stringify(lead)));
   return lead;
@@ -182,16 +224,27 @@ export async function deleteLeadInCloud(id: string) {
   await remove(ref(db, `nexa/v2/leads/${id}`));
 }
 
-export async function uploadBookAsset(bookId: string, kind: 'cover' | 'pdf', file: Blob, filename: string) {
+export async function uploadBookAsset(bookId: string, kind: 'cover' | 'pdf' | 'founder', file: Blob, filename: string) {
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const target = storageRef(storage, `book-assets/${bookId}/${kind}/${Date.now()}-${safeName}`);
+  const target = storageRef(storage, `site-assets/${bookId}/${kind}/${Date.now()}-${safeName}`);
   await uploadBytes(target, file, { contentType: file.type });
   return getDownloadURL(target);
 }
 
 export async function fetchFromCloud() {
-  const [catalog, leads] = await Promise.all([get(catalogRef), get(leadsRef)]);
-  return { books: decodeBooks(catalog.val()), leads: decodeLeads(leads.val()) };
+  const [catalog, leads, settingsSnap] = await Promise.all([
+    get(catalogRef),
+    get(leadsRef),
+    get(settingsRef).catch(() => null),
+  ]);
+  const settings = settingsSnap && settingsSnap.exists()
+    ? { ...DEFAULT_SITE_SETTINGS, ...(settingsSnap.val() as SiteSettings) }
+    : DEFAULT_SITE_SETTINGS;
+  return {
+    books: decodeBooks(catalog.val()),
+    leads: decodeLeads(leads.val()),
+    settings,
+  };
 }
 
 export const pullFromCloud = async (_url?: string) => fetchFromCloud();

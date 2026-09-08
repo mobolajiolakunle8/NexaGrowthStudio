@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import type { Book } from '../types';
+import type { Book, SiteSettings } from '../types';
 import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
 import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
   getEffectiveDbUrl,
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync,
+  saveSiteSettingsToCloud, uploadBookAsset
 } from '../cloud';
 
 interface Props {
   books: Book[];
+  settings: SiteSettings;
   onBooksChange: (books: Book[]) => void;
+  onSettingsChange: (settings: SiteSettings) => void;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
   megaPasscode: string;
@@ -21,8 +24,8 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
-  authorRole: 'Nexa Growth Studio — Ibadan, Nigeria',
-  kicker: 'Free Guide · No Strings Attached',
+  authorRole: 'Founder & Publisher',
+  kicker: 'Free Business Playbook',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Get your free copy',
   ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
@@ -34,7 +37,7 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
     accountNumber: '0123456789',
     bankName: 'GTBank',
     thankYouMessage: 'Thank you so much for reading! If this guide helped you, please consider supporting our work.',
-    donationMessage: 'Support us — donate any amount you wish.',
+    donationMessage: 'Support our mission — donate any amount you wish.',
   },
 });
 
@@ -43,11 +46,11 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
-  authorRole: 'Nexa Growth Studio — Ibadan, Nigeria',
-  kicker: 'Premium Book',
+  authorRole: 'Founder & Publisher',
+  kicker: 'Executive Edition',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
-  ctaTitle: 'Get the Book',
-  ctaSubtitle: 'Secure your copy today and start transforming your business.',
+  ctaTitle: 'Secure your copy',
+  ctaSubtitle: 'Complete payment and receive the permanent playbook link automatically on WhatsApp.',
   adminWhatsapp: '+2349030192034',
   adminPasscode: 'admin123',
   published: false,
@@ -57,12 +60,21 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
     bankName: 'GTBank',
     price: 5000,
     currency: '₦',
-    paymentNote: 'Transfer the exact amount and send us your receipt on WhatsApp to receive the book.',
+    paymentNote: 'Transfer the exact amount and send your receipt on WhatsApp to verify your order.',
   },
 });
 
-export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLanding, megaPasscode, onMegaPasscodeChanged }: Props) {
-  const [mainTab, setMainTab] = useState<'books' | 'settings'>('books');
+export default function MegaAdmin({
+  books,
+  settings,
+  onBooksChange,
+  onSettingsChange,
+  onEditBook,
+  onViewLanding,
+  megaPasscode,
+  onMegaPasscodeChanged,
+}: Props) {
+  const [mainTab, setMainTab] = useState<'books' | 'frontpage' | 'settings'>('books');
   const [createOpen, setCreateOpen] = useState(false);
   const [bookType, setBookType] = useState<'free' | 'paid'>('free');
   const [draft, setDraft] = useState<Partial<Book>>(EMPTY_FREE_BOOK());
@@ -70,7 +82,13 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // ── Settings state ──
+  // Frontpage Editor State
+  const [siteDraft, setSiteDraft] = useState<SiteSettings>(settings);
+  const [savingFrontpage, setSavingFrontpage] = useState(false);
+  const [frontpageMsg, setFrontpageMsg] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Settings State
   const [curPass, setCurPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -110,9 +128,9 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
       slug,
       title: draft.title!,
       subtitle: draft.subtitle || '',
-      author: draft.author || 'Olakunle Samuel',
-      authorRole: draft.authorRole || 'Nexa Growth Studio — Ibadan, Nigeria',
-      kicker: draft.kicker || (bookType === 'free' ? 'Free Guide · No Strings Attached' : 'Premium Book'),
+      author: draft.author || settings.founderName,
+      authorRole: draft.authorRole || settings.founderRole,
+      kicker: draft.kicker || (bookType === 'free' ? 'Free Business Playbook' : 'Executive Edition'),
       type: bookType,
       whatsInside: draft.whatsInside || [],
       ctaTitle: draft.ctaTitle || 'Get your copy',
@@ -145,6 +163,46 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
     saveBooks(updated);
   };
 
+  /* ── Save Frontpage Edits ── */
+  const handleSaveFrontpage = async () => {
+    setSavingFrontpage(true);
+    setFrontpageMsg(null);
+    try {
+      await saveSiteSettingsToCloud(siteDraft);
+      onSettingsChange(siteDraft);
+      setFrontpageMsg('✓ Front page updated and broadcast to all live browsers!');
+      setTimeout(() => setFrontpageMsg(null), 4000);
+    } catch (e) {
+      setFrontpageMsg(`Failed to save: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingFrontpage(false);
+    }
+  };
+
+  const handleFounderPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const { compressImageFile } = await import('../storage');
+      const compressedDataUrl = await compressImageFile(file, 900, 0.85);
+
+      // Try uploading to Firebase storage for a public URL, fallback to compressed data URL
+      try {
+        const blob = await fetch(compressedDataUrl).then(r => r.blob());
+        const cloudUrl = await uploadBookAsset('founder', 'founder', blob, file.name);
+        setSiteDraft(prev => ({ ...prev, founderPhoto: cloudUrl }));
+      } catch {
+        setSiteDraft(prev => ({ ...prev, founderPhoto: compressedDataUrl }));
+      }
+      setFrontpageMsg('Photo ready! Click "Save Front Page" to publish.');
+    } catch {
+      alert('Could not process that photo. Please try a JPG or PNG.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   /* ── Password settings ── */
   const handleMegaPassChange = (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +213,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
     try { localStorage.setItem(MEGA_ADMIN_PASSCODE_KEY, newPass); } catch { /* */ }
     onMegaPasscodeChanged(newPass);
     setCurPass(''); setNewPass(''); setConfirmPass('');
-    setPassMsg({ ok: true, text: 'Mega admin passcode updated. Use the new code next time you log in.' });
+    setPassMsg({ ok: true, text: 'Mega admin passcode updated successfully.' });
   };
 
   const getAccessVal = (book: Book, field: 'passcode' | 'whatsapp') => {
@@ -175,7 +233,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
     setTimeout(() => setAccessMsg(null), 3000);
   };
 
-  /* ── Cloud sync settings ── */
+  /* ── Cloud sync ── */
   const handleTest = async () => {
     setSyncBusy('testing'); setSyncMsg(null);
     const r = await testConnection(dbUrl);
@@ -190,7 +248,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
       const { books: lb, leads: ll } = readLocal();
       await pushToCloudUrl(dbUrl, lb, ll);
       setLastSync(new Date().toISOString());
-      setSyncMsg({ ok: true, text: `Uploaded ${lb.length} book(s) and ${ll.length} lead(s) to the cloud. Other browsers will pull this on next load.` });
+      setSyncMsg({ ok: true, text: `Uploaded ${lb.length} book(s) and ${ll.length} lead(s) to cloud.` });
     } catch (e) {
       setSyncMsg({ ok: false, text: `Upload failed: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -199,17 +257,17 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
 
   const handlePull = async () => {
     if (!dbUrl.trim()) { setSyncMsg({ ok: false, text: 'Enter your database URL first.' }); return; }
-    if (!confirm('Download cloud data and replace what is on THIS browser?')) return;
+    if (!confirm('Download cloud data and replace this browser’s cache?')) return;
     setSyncBusy('pulling'); setSyncMsg(null);
     try {
       const cloud = await pullFromCloud(dbUrl);
       if (!cloud || (cloud.books.length === 0 && cloud.leads.length === 0)) {
-        setSyncMsg({ ok: false, text: 'Cloud database is empty — nothing to download. Push first.' });
+        setSyncMsg({ ok: false, text: 'Cloud database is empty.' });
       } else {
         writeLocal(cloud.books, cloud.leads);
         onBooksChange(cloud.books);
         setLastSync(new Date().toISOString());
-        setSyncMsg({ ok: true, text: `Downloaded ${cloud.books.length} book(s) and ${cloud.leads.length} lead(s). Page will reflect cloud data.` });
+        setSyncMsg({ ok: true, text: `Downloaded ${cloud.books.length} book(s) and ${cloud.leads.length} lead(s).` });
       }
     } catch (e) {
       setSyncMsg({ ok: false, text: `Download failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -220,14 +278,14 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   /* ── Backup ── */
   const handleExport = () => {
     const { books: lb, leads: ll } = readLocal();
-    const blob = new Blob([JSON.stringify({ app: 'nexa-publishing', exportedAt: new Date().toISOString(), books: lb, leads: ll }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'nexa-publishing', exportedAt: new Date().toISOString(), books: lb, leads: ll, settings }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `nexa-backup-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setBackupMsg('Backup downloaded. Keep this file safe.');
+    setBackupMsg('Backup downloaded.');
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,12 +296,16 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
       try {
         const data = JSON.parse(r.result as string);
         if (!Array.isArray(data.books)) throw new Error('Invalid backup file.');
-        if (!confirm(`Restore backup with ${data.books.length} book(s) and ${(data.leads || []).length} lead(s)? This replaces current data on THIS browser.`)) return;
+        if (!confirm(`Restore backup with ${data.books.length} book(s)? This replaces current data on this device.`)) return;
         writeLocal(data.books, Array.isArray(data.leads) ? data.leads : []);
         onBooksChange(data.books);
+        if (data.settings) {
+          onSettingsChange(data.settings);
+          setSiteDraft(data.settings);
+        }
         setBackupMsg('Backup restored successfully.');
       } catch {
-        setBackupMsg('Could not read backup file. Make sure it is a Nexa backup JSON.');
+        setBackupMsg('Could not read backup file.');
       }
     };
     r.readAsText(file);
@@ -253,29 +315,53 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
   const totalLeads = allLeads.length;
   const totalPaid = allLeads.filter(l => l.paid).length;
 
-  const inputCls = 'w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 text-white';
+  const inputCls = 'w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:border-[#C8862A] text-white transition-colors';
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100">
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-[Inter] selection:bg-[#C8862A] selection:text-slate-950">
       {/* Header */}
-      <header className="bg-slate-950 border-b border-slate-800 px-6 py-5 shadow-lg">
+      <header className="bg-slate-950 border-b border-slate-800 px-6 py-4 shadow-lg sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black text-lg">N</div>
+            <div className="w-10 h-10 rounded-xl bg-[#C8862A] flex items-center justify-center text-slate-950 font-black text-lg font-[Space_Grotesk]">N</div>
             <div>
-              <h1 className="font-[Space_Grotesk] font-bold text-xl tracking-tight">Nexa Publishing HQ</h1>
-              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Mega Admin Dashboard</p>
+              <h1 className="font-[Space_Grotesk] font-bold text-lg tracking-tight">Nexa Publishing HQ</h1>
+              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Executive Admin Console</p>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
-            <div className="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
-              <button onClick={() => setMainTab('books')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${mainTab === 'books' ? 'bg-amber-500 text-slate-950' : 'text-slate-300'}`}>📚 Books</button>
-              <button onClick={() => setMainTab('settings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${mainTab === 'settings' ? 'bg-amber-500 text-slate-950' : 'text-slate-300'}`}>⚙️ Settings</button>
+            <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
+              <button
+                onClick={() => setMainTab('books')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mainTab === 'books' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📚 Books ({books.length})
+              </button>
+              <button
+                onClick={() => setMainTab('frontpage')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mainTab === 'frontpage' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🏛️ Front Page
+              </button>
+              <button
+                onClick={() => setMainTab('settings')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mainTab === 'settings' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ⚙️ Settings & Passwords
+              </button>
             </div>
+
             {mainTab === 'books' && (
               <button
                 onClick={() => { setDraft(bookType === 'free' ? EMPTY_FREE_BOOK() : EMPTY_PAID_BOOK()); setCreateOpen(true); }}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-xl transition shadow-md"
+                className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md"
               >
                 + New Book
               </button>
@@ -284,96 +370,96 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
         </div>
       </header>
 
-      {mainTab === 'books' ? (
+      {/* TAB 1: BOOKS */}
+      {mainTab === 'books' && (
         <div className="max-w-6xl mx-auto px-6 py-8">
-          {/* Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <span className="text-xs text-slate-400 block">Total Books</span>
-              <span className="text-2xl font-bold text-white">{books.length}</span>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-400 block font-mono uppercase">Total Books</span>
+              <span className="text-2xl font-bold text-white font-[Space_Grotesk] mt-1 block">{books.length}</span>
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <span className="text-xs text-slate-400 block">Published</span>
-              <span className="text-2xl font-bold text-emerald-400">{books.filter(b => b.published).length}</span>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-400 block font-mono uppercase">Published</span>
+              <span className="text-2xl font-bold text-emerald-400 font-[Space_Grotesk] mt-1 block">{books.filter(b => b.published).length}</span>
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <span className="text-xs text-slate-400 block">Total Leads</span>
-              <span className="text-2xl font-bold text-amber-400">{totalLeads}</span>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-400 block font-mono uppercase">Total Leads</span>
+              <span className="text-2xl font-bold text-[#C8862A] font-[Space_Grotesk] mt-1 block">{totalLeads}</span>
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-              <span className="text-xs text-slate-400 block">Paid Sales</span>
-              <span className="text-2xl font-bold text-blue-400">{totalPaid}</span>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-400 block font-mono uppercase">Paid Orders</span>
+              <span className="text-2xl font-bold text-blue-400 font-[Space_Grotesk] mt-1 block">{totalPaid}</span>
             </div>
           </div>
 
-          {/* Search */}
           <div className="flex items-center gap-3 mb-6">
             <input
               type="text"
-              placeholder="Search books…"
+              placeholder="Search library by title or author..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-sm px-4 py-2.5 rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 text-white w-full max-w-xs"
+              className="bg-slate-950 border border-slate-800 text-sm px-4 py-2.5 rounded-xl focus:outline-none focus:border-[#C8862A] text-white w-full max-w-sm"
             />
-            <span className="text-xs text-slate-400">{filteredBooks.length} book{filteredBooks.length !== 1 ? 's' : ''}</span>
+            <span className="text-xs text-slate-400 font-mono">{filteredBooks.length} book{filteredBooks.length !== 1 ? 's' : ''} found</span>
           </div>
 
-          {/* Books Grid */}
           {filteredBooks.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-20 bg-slate-950 rounded-2xl border border-dashed border-slate-800">
               <span className="text-4xl mb-3">📚</span>
-              <h3 className="font-[Space_Grotesk] font-bold text-lg mb-1">No books yet</h3>
-              <p className="text-sm text-slate-400 mb-5 max-w-sm">Create your first book to generate a landing page and start collecting leads.</p>
-              <button onClick={() => setCreateOpen(true)} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm px-6 py-3 rounded-xl transition">+ Create First Book</button>
+              <h3 className="font-[Space_Grotesk] font-bold text-lg mb-1">No books listed</h3>
+              <p className="text-sm text-slate-400 mb-5 max-w-sm">Create a playbook to launch a landing page and start generating leads.</p>
+              <button onClick={() => setCreateOpen(true)} className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition">+ Create First Book</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredBooks.map(book => {
                 const bookLeads = allLeads.filter(l => l.bookId === book.id);
                 const bookPaid = bookLeads.filter(l => l.paid).length;
                 const shareUrl = `${window.location.origin}${window.location.pathname}#/book/${book.slug}`;
 
                 return (
-                  <div key={book.id} className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col hover:border-slate-700 transition">
-                    <div className={`px-5 pt-5 pb-4 ${book.type === 'free' ? 'bg-gradient-to-br from-[#152447] to-[#0D1830]' : 'bg-gradient-to-br from-slate-800 to-slate-900'}`}>
+                  <div key={book.id} className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col hover:border-slate-700 transition-colors shadow-sm">
+                    <div className="px-5 pt-5 pb-4 bg-gradient-to-br from-slate-900 to-slate-950 border-b border-slate-800/80">
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${book.type === 'free' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
-                          {book.type === 'free' ? 'Free' : `${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString()}`}
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                          book.type === 'free' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-[#C8862A]/15 text-[#C8862A] border border-[#C8862A]/30'
+                        }`}>
+                          {book.type === 'free' ? 'Free Access' : `${book.payment?.currency || '₦'}${book.payment?.price?.toLocaleString()}`}
                         </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${book.published ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${book.published ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
                           {book.published ? '● Live' : '○ Draft'}
                         </span>
                       </div>
-                      <h3 className="font-[Space_Grotesk] font-bold text-white text-base leading-tight mb-1">{book.title}</h3>
-                      <p className="text-xs text-slate-400 line-clamp-2">{book.subtitle}</p>
+                      <h3 className="font-[Space_Grotesk] font-bold text-white text-base leading-snug mb-1">{book.title}</h3>
+                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{book.subtitle}</p>
                     </div>
 
-                    <div className="px-5 py-3 border-b border-slate-800 flex gap-4">
-                      <div><span className="text-xs text-slate-400 block">Leads</span><span className="text-sm font-bold text-white">{bookLeads.length}</span></div>
-                      {book.type === 'paid' && <div><span className="text-xs text-slate-400 block">Paid</span><span className="text-sm font-bold text-emerald-400">{bookPaid}</span></div>}
-                      <div><span className="text-xs text-slate-400 block">Slug</span><span className="text-xs font-mono text-slate-500">/{book.slug}</span></div>
+                    <div className="px-5 py-3 border-b border-slate-800/60 flex gap-5 text-xs">
+                      <div><span className="text-[10px] text-slate-400 block font-mono uppercase">Leads</span><span className="font-bold text-white">{bookLeads.length}</span></div>
+                      {book.type === 'paid' && <div><span className="text-[10px] text-slate-400 block font-mono uppercase">Paid</span><span className="font-bold text-emerald-400">{bookPaid}</span></div>}
+                      <div className="truncate"><span className="text-[10px] text-slate-400 block font-mono uppercase">Slug</span><span className="font-mono text-slate-400 text-[11px]">/{book.slug}</span></div>
                     </div>
 
-                    <div className="px-5 py-3 border-b border-slate-800">
+                    <div className="px-5 py-3 border-b border-slate-800/60 bg-black/20">
                       <div className="flex items-center gap-2">
-                        <code className="text-[10px] text-amber-400 bg-black/30 px-2 py-1 rounded flex-1 truncate">{shareUrl}</code>
-                        <button onClick={() => navigator.clipboard.writeText(shareUrl)} className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded transition">Copy</button>
+                        <code className="text-[10px] text-[#C8862A] px-2 py-1 rounded flex-1 truncate font-mono">{shareUrl}</code>
+                        <button onClick={() => { navigator.clipboard.writeText(shareUrl); alert('Link copied to clipboard!'); }} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-md transition shrink-0 font-mono">Copy</button>
                       </div>
                     </div>
 
                     <div className="px-5 py-4 flex flex-wrap gap-2 mt-auto">
-                      <button onClick={() => onEditBook(book)} className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 rounded-lg transition">Manage</button>
-                      <button onClick={() => onViewLanding(book)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-xs py-2 rounded-lg border border-slate-700 transition">Preview</button>
-                      <button onClick={() => handleTogglePublish(book.id)} className={`flex-1 text-xs py-2 rounded-lg border transition ${book.published ? 'bg-red-900/30 border-red-800 text-red-400 hover:bg-red-900/50' : 'bg-emerald-900/30 border-emerald-800 text-emerald-400 hover:bg-emerald-900/50'}`}>
+                      <button onClick={() => onEditBook(book)} className="flex-1 bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs py-2 rounded-xl transition">Manage Book</button>
+                      <button onClick={() => onViewLanding(book)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-xs py-2 rounded-xl border border-slate-700 transition">Preview</button>
+                      <button onClick={() => handleTogglePublish(book.id)} className={`text-xs px-3 py-2 rounded-xl border transition ${book.published ? 'border-red-900/50 text-red-400 hover:bg-red-900/20' : 'border-emerald-900/50 text-emerald-400 hover:bg-emerald-900/20'}`}>
                         {book.published ? 'Unpublish' : 'Publish'}
                       </button>
                       {deleteConfirm === book.id ? (
                         <>
-                          <button onClick={() => handleDelete(book.id)} className="text-xs py-2 px-3 bg-red-600 hover:bg-red-500 text-white rounded-lg transition">Confirm Delete</button>
-                          <button onClick={() => setDeleteConfirm(null)} className="text-xs py-2 px-3 bg-slate-700 text-white rounded-lg transition">Cancel</button>
+                          <button onClick={() => handleDelete(book.id)} className="text-xs py-2 px-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition">Confirm</button>
+                          <button onClick={() => setDeleteConfirm(null)} className="text-xs py-2 px-3 bg-slate-800 text-white rounded-xl">✕</button>
                         </>
                       ) : (
-                        <button onClick={() => setDeleteConfirm(book.id)} className="text-xs py-2 px-3 text-red-400 hover:bg-red-900/20 rounded-lg border border-red-900/40 transition">🗑</button>
+                        <button onClick={() => setDeleteConfirm(book.id)} className="text-xs px-3 py-2 text-slate-400 hover:text-red-400 hover:bg-red-900/10 rounded-xl transition">🗑</button>
                       )}
                     </div>
                   </div>
@@ -382,46 +468,307 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
             </div>
           )}
         </div>
-      ) : (
-        /* ─────────────── SETTINGS TAB ─────────────── */
+      )}
+
+      {/* TAB 2: FRONTPAGE CMS */}
+      {mainTab === 'frontpage' && (
+        <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+            <div>
+              <h2 className="font-[Space_Grotesk] font-bold text-2xl text-white">Front Page Content Management</h2>
+              <p className="text-xs text-slate-400 mt-1">Live edits to the publishing house masthead, hero narrative, and founder profile.</p>
+            </div>
+            <button
+              onClick={handleSaveFrontpage}
+              disabled={savingFrontpage}
+              className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition shadow-md self-start disabled:opacity-50"
+            >
+              {savingFrontpage ? 'Saving & Broadcasting...' : 'Save Front Page Changes'}
+            </button>
+          </div>
+
+          {frontpageMsg && (
+            <div className={`p-4 rounded-xl text-xs font-semibold ${
+              frontpageMsg.startsWith('✓') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+            }`}>
+              {frontpageMsg}
+            </div>
+          )}
+
+          {/* Studio Brand Info */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">🏛️ Studio Identity</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Publishing House Name</label>
+                <input
+                  type="text"
+                  value={siteDraft.studioName}
+                  onChange={e => setSiteDraft(p => ({ ...p, studioName: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Location</label>
+                <input
+                  type="text"
+                  value={siteDraft.location}
+                  onChange={e => setSiteDraft(p => ({ ...p, location: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Studio Tagline (Header Sub-text)</label>
+                <input
+                  type="text"
+                  value={siteDraft.studioTagline}
+                  onChange={e => setSiteDraft(p => ({ ...p, studioTagline: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Hero Section */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">🌟 Homepage Hero Headline</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Hero Kicker (Small Top Label)</label>
+                <input
+                  type="text"
+                  value={siteDraft.heroKicker}
+                  onChange={e => setSiteDraft(p => ({ ...p, heroKicker: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Main Hero Headline</label>
+                <input
+                  type="text"
+                  value={siteDraft.heroTitle}
+                  onChange={e => setSiteDraft(p => ({ ...p, heroTitle: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Hero Sub-paragraph</label>
+                <textarea
+                  rows={3}
+                  value={siteDraft.heroSubtitle}
+                  onChange={e => setSiteDraft(p => ({ ...p, heroSubtitle: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Founder / The Mind Behind Section */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-5">
+            <div>
+              <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">👤 The Mind Behind Nexa Growth Studio</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Customize the founder feature section on the homepage.</p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Founder Name</label>
+                <input
+                  type="text"
+                  value={siteDraft.founderName}
+                  onChange={e => setSiteDraft(p => ({ ...p, founderName: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Founder Role / Title</label>
+                <input
+                  type="text"
+                  value={siteDraft.founderRole}
+                  onChange={e => setSiteDraft(p => ({ ...p, founderRole: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Founder Section Top Eyebrow</label>
+                <input
+                  type="text"
+                  value={siteDraft.founderBadge}
+                  onChange={e => setSiteDraft(p => ({ ...p, founderBadge: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            {/* Founder Photo Upload */}
+            <div className="border border-slate-800 bg-slate-900/60 rounded-xl p-4">
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-2 font-mono">Founder Portrait Photo</label>
+              <div className="flex items-center gap-5 flex-wrap">
+                {siteDraft.founderPhoto ? (
+                  <img
+                    src={siteDraft.founderPhoto}
+                    alt="Founder preview"
+                    className="w-20 h-24 object-cover rounded-xl border border-slate-700 shadow"
+                  />
+                ) : (
+                  <div className="w-20 h-24 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center font-bold text-slate-600 font-[Space_Grotesk]">
+                    No Photo
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="inline-block bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-4 py-2 rounded-xl cursor-pointer transition">
+                    {uploadingPhoto ? 'Processing photo...' : 'Upload Founder Photo'}
+                    <input type="file" accept="image/*" onChange={handleFounderPhotoUpload} className="hidden" />
+                  </label>
+                  {siteDraft.founderPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => setSiteDraft(p => ({ ...p, founderPhoto: '' }))}
+                      className="block text-xs text-red-400 hover:underline"
+                    >
+                      Remove photo (fallback to monogram)
+                    </button>
+                  )}
+                  <p className="text-[11px] text-slate-500">Auto-compressed and uploaded to Firebase Storage. Displays cleanly on the homepage.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Founder Headline Quote</label>
+              <input
+                type="text"
+                value={siteDraft.founderQuote}
+                onChange={e => setSiteDraft(p => ({ ...p, founderQuote: e.target.value }))}
+                className={inputCls}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Story Paragraph 1</label>
+                <textarea
+                  rows={3}
+                  value={siteDraft.founderBioParagraph1}
+                  onChange={e => setSiteDraft(p => ({ ...p, founderBioParagraph1: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Story Paragraph 2</label>
+                <textarea
+                  rows={3}
+                  value={siteDraft.founderBioParagraph2}
+                  onChange={e => setSiteDraft(p => ({ ...p, founderBioParagraph2: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Subject Tags (Comma-separated)</label>
+              <input
+                type="text"
+                value={siteDraft.founderTags.join(', ')}
+                onChange={e => setSiteDraft(p => ({ ...p, founderTags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
+                className={inputCls}
+              />
+            </div>
+          </section>
+
+          {/* Contact & Dispatch */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact & Footer Dispatch</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Contact WhatsApp Number</label>
+                <input
+                  type="text"
+                  value={siteDraft.contactWhatsapp}
+                  onChange={e => setSiteDraft(p => ({ ...p, contactWhatsapp: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Copyright Label</label>
+                <input
+                  type="text"
+                  value={siteDraft.copyrightText}
+                  onChange={e => setSiteDraft(p => ({ ...p, copyrightText: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Dispatch Box Heading</label>
+                <input
+                  type="text"
+                  value={siteDraft.newsletterHeading}
+                  onChange={e => setSiteDraft(p => ({ ...p, newsletterHeading: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Dispatch Box Subtitle</label>
+                <textarea
+                  rows={2}
+                  value={siteDraft.newsletterSubtitle}
+                  onChange={e => setSiteDraft(p => ({ ...p, newsletterSubtitle: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
+          <button
+            onClick={handleSaveFrontpage}
+            disabled={savingFrontpage}
+            className="w-full bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-sm py-4 rounded-xl transition shadow-lg disabled:opacity-50"
+          >
+            {savingFrontpage ? 'Saving & Broadcasting...' : 'Save Front Page Changes'}
+          </button>
+        </div>
+      )}
+
+      {/* TAB 3: SETTINGS & PASSWORDS */}
+      {mainTab === 'settings' && (
         <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-          {/* 1 — Mega admin password */}
+          {/* Mega admin passcode */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">🔐 Mega Admin Password</h2>
-            <p className="text-xs text-slate-400 mb-4">This code unlocks <code className="text-slate-200">#/admin</code> (all books). Keep it private.</p>
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">🔐 Mega Admin Password</h2>
+            <p className="text-xs text-slate-400 mb-4">This passcode unlocks the full publishing console at <code className="text-slate-200">#/admin</code>.</p>
             <form onSubmit={handleMegaPassChange} className="grid sm:grid-cols-3 gap-3">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Current</label>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Current Passcode</label>
                 <input type={showPass ? 'text' : 'password'} value={curPass} onChange={e => setCurPass(e.target.value)} className={inputCls} placeholder="••••••" />
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">New (min 6)</label>
-                <input type={showPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} className={inputCls} placeholder="New code" />
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">New Passcode (min 6)</label>
+                <input type={showPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} className={inputCls} placeholder="New passcode" />
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Confirm new</label>
-                <input type={showPass ? 'text' : 'password'} value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className={inputCls} placeholder="Repeat" />
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Confirm New</label>
+                <input type={showPass ? 'text' : 'password'} value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className={inputCls} placeholder="Repeat passcode" />
               </div>
-              <div className="sm:col-span-3 flex items-center gap-3 flex-wrap">
-                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-5 py-2.5 rounded-lg transition">Update Mega Password</button>
-                <button type="button" onClick={() => setShowPass(s => !s)} className="text-xs text-slate-400 hover:text-slate-200">{showPass ? 'Hide' : 'Show'} codes</button>
+              <div className="sm:col-span-3 flex items-center gap-3 flex-wrap pt-1">
+                <button type="submit" className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl transition">Update Mega Password</button>
+                <button type="button" onClick={() => setShowPass(s => !s)} className="text-xs text-slate-400 hover:text-slate-200 font-mono">{showPass ? 'Hide' : 'Show'} passcodes</button>
                 {passMsg && <span className={`text-xs ${passMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{passMsg.text}</span>}
               </div>
             </form>
           </section>
 
-          {/* 2 — Per-book access */}
+          {/* Book-level access codes */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">📖 Book Access Codes</h2>
-            <p className="text-xs text-slate-400 mb-4">Each book has its own admin code + WhatsApp. Share a book's code with a co-admin without exposing HQ.</p>
-            {books.length === 0 && <p className="text-xs text-slate-500">No books yet.</p>}
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">📖 Individual Playbook Access Codes</h2>
+            <p className="text-xs text-slate-400 mb-4">Each playbook has its own admin dashboard passcode and WhatsApp dispatch number.</p>
+            {books.length === 0 && <p className="text-xs text-slate-500">No books created yet.</p>}
             <div className="space-y-3">
               {books.map(b => (
                 <div key={b.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-white mb-3 truncate">{b.title} <span className="text-[10px] font-mono text-slate-500">#/admin/book/{b.slug}</span></p>
+                  <p className="text-sm font-semibold text-white mb-3 truncate">{b.title} <span className="text-[10px] font-mono text-slate-500 ml-1">#/admin/book/{b.slug}</span></p>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Book passcode</label>
+                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Admin Passcode</label>
                       <input
                         type={showPass ? 'text' : 'password'}
                         value={getAccessVal(b, 'passcode')}
@@ -430,7 +777,7 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Admin WhatsApp</label>
+                      <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">WhatsApp Order Number</label>
                       <input
                         type="text"
                         value={getAccessVal(b, 'whatsapp')}
@@ -439,142 +786,197 @@ export default function MegaAdmin({ books, onBooksChange, onEditBook, onViewLand
                       />
                     </div>
                   </div>
-                  <button onClick={() => handleSaveBookAccess(b.id)} className="mt-3 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition">Save access for this book</button>
+                  <button onClick={() => handleSaveBookAccess(b.id)} className="mt-3 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition">Save Access for this Book</button>
                 </div>
               ))}
             </div>
             {accessMsg && <p className="text-xs text-emerald-400 mt-3">{accessMsg}</p>}
           </section>
 
-          {/* 3 — Auto cross-browser sync */}
+          {/* Cloud Connection */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">☁️ Auto Cross-Browser Sync</h2>
-            <p className="text-xs text-slate-400 mb-4">
-              <b className="text-emerald-400">● Automatic</b> — no buttons needed. Every edit, lead, cover or PDF syncs to Firebase and appears on every open browser &amp; phone instantly.
-              {lastSync && <span className="block mt-1">Last sync: {new Date(lastSync).toLocaleString()}</span>}
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">☁️ Realtime Cloud Synchronization</h2>
+            <p className="text-xs text-slate-400 mb-3">
+              Connected to Firebase Realtime Database. Catalog and lead records broadcast across all devices in real time.
+              {lastSync && <span className="block mt-1 font-mono text-[11px] text-slate-500">Last synchronized: {new Date(lastSync).toLocaleString()}</span>}
             </p>
-            <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Firebase Realtime Database URL</label>
             <input
-              type="text" value={dbUrl} readOnly
+              type="text"
+              value={dbUrl}
+              readOnly
               className={`${inputCls} font-mono mb-3 opacity-70 cursor-not-allowed`}
             />
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleTest} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
-                {syncBusy === 'testing' ? 'Testing…' : 'Test Connection'}
+              <button onClick={handleTest} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-xl transition disabled:opacity-50">
+                {syncBusy === 'testing' ? 'Testing connection...' : 'Test Cloud Connection'}
               </button>
-              <button onClick={handlePush} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
-                {syncBusy === 'pushing' ? 'Uploading…' : 'Sync Now (one-time migration)'}
+              <button onClick={handlePush} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-xl transition disabled:opacity-50">
+                {syncBusy === 'pushing' ? 'Uploading...' : 'Force Sync to Cloud'}
               </button>
-              <button onClick={handlePull} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50">
-                {syncBusy === 'pulling' ? 'Downloading…' : 'Load Latest (one-time)'}
+              <button onClick={handlePull} disabled={syncBusy !== 'idle'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white px-4 py-2 rounded-xl transition disabled:opacity-50">
+                {syncBusy === 'pulling' ? 'Downloading...' : 'Re-download Cloud Catalog'}
               </button>
             </div>
             {syncMsg && <p className={`text-xs mt-3 ${syncMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{syncMsg.text}</p>}
-            <div className="mt-4 bg-slate-900 border border-slate-800 rounded-xl p-4 text-[11px] text-slate-400 leading-relaxed">
-              <b className="text-slate-200">How it works:</b> this site opens a real-time connection to Firebase. When you add, edit or delete anything, it uploads automatically. Every other browser with the site open receives the change within a second — no refresh needed. The buttons above are only useful for a one-time migration of old browser data.
-            </div>
           </section>
 
-          {/* 4 — Backup */}
+          {/* Backup */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="font-[Space_Grotesk] font-bold text-base text-amber-400 mb-1">💾 Backup &amp; Restore</h2>
-            <p className="text-xs text-slate-400 mb-4">Download a full backup before major changes. Restore it on any device to copy everything over manually.</p>
+            <h2 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A] mb-1">💾 Export / Backup Database</h2>
+            <p className="text-xs text-slate-400 mb-4">Download a full JSON backup of all published books, leads, and frontpage configurations.</p>
             <div className="flex flex-wrap gap-2 items-center">
-              <button onClick={handleExport} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition">⬇ Download Backup (JSON)</button>
-              <label className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition cursor-pointer">
+              <button onClick={handleExport} className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-xl transition">⬇ Download Backup (JSON)</button>
+              <label className="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold px-4 py-2 rounded-xl transition cursor-pointer">
                 ⬆ Restore from File
                 <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
               </label>
-              {backupMsg && <span className="text-xs text-slate-300">{backupMsg}</span>}
+              {backupMsg && <span className="text-xs text-slate-300 ml-2">{backupMsg}</span>}
             </div>
           </section>
         </div>
       )}
 
-      {/* Create Book Modal */}
+      {/* Modal: Create Playbook */}
       {createOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setCreateOpen(false)}>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setCreateOpen(false)}>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-xl w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="font-[Space_Grotesk] text-xl font-bold text-amber-400 mb-1">Create New Book</h3>
-            <p className="text-xs text-slate-400 mb-5">Set up your book's landing page. You can edit everything later.</p>
+            <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Publication</h3>
+            <p className="text-xs text-slate-400 mb-5">Set up your playbook’s landing page. You can customize all copy later.</p>
 
             <div className="grid grid-cols-2 gap-2 mb-5">
-              <button onClick={() => handleTypeChange('free')} className={`py-3 rounded-xl text-sm font-bold border transition ${bookType === 'free' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>🆓 Free Book</button>
-              <button onClick={() => handleTypeChange('paid')} className={`py-3 rounded-xl text-sm font-bold border transition ${bookType === 'paid' ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>💰 Paid Book</button>
+              <button
+                type="button"
+                onClick={() => handleTypeChange('free')}
+                className={`py-3 rounded-xl text-sm font-bold border transition ${
+                  bookType === 'free' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                🆓 Free Playbook
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTypeChange('paid')}
+                className={`py-3 rounded-xl text-sm font-bold border transition ${
+                  bookType === 'paid' ? 'bg-[#C8862A]/20 border-[#C8862A] text-[#C8862A]' : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                💰 Paid Playbook
+              </button>
             </div>
 
             <div className="flex flex-col gap-4">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Book Title *</label>
-                <input type="text" value={draft.title || ''} onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Title *</label>
+                <input
+                  type="text"
+                  value={draft.title || ''}
+                  onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
                   placeholder="e.g. The Small Business Sales Playbook"
-                  className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                  className={inputCls}
+                />
               </div>
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Subtitle</label>
-                <textarea value={draft.subtitle || ''} onChange={e => setDraft(p => ({ ...p, subtitle: e.target.value }))}
-                  placeholder="A short description of the book…"
-                  className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none" rows={2} />
+                <textarea
+                  value={draft.subtitle || ''}
+                  onChange={e => setDraft(p => ({ ...p, subtitle: e.target.value }))}
+                  placeholder="A clear, practical premise..."
+                  className={inputCls}
+                  rows={2}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Author Name</label>
-                  <input type="text" value={draft.author || ''} onChange={e => setDraft(p => ({ ...p, author: e.target.value }))}
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                  <input
+                    type="text"
+                    value={draft.author || ''}
+                    onChange={e => setDraft(p => ({ ...p, author: e.target.value }))}
+                    className={inputCls}
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Admin WhatsApp *</label>
-                  <input type="text" value={draft.adminWhatsapp || ''} onChange={e => setDraft(p => ({ ...p, adminWhatsapp: e.target.value }))}
+                  <input
+                    type="text"
+                    value={draft.adminWhatsapp || ''}
+                    onChange={e => setDraft(p => ({ ...p, adminWhatsapp: e.target.value }))}
                     placeholder="+2349030192034"
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono" />
+                    className={`${inputCls} font-mono`}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Book Admin Passcode *</label>
-                  <input type="text" value={draft.adminPasscode || ''} onChange={e => setDraft(p => ({ ...p, adminPasscode: e.target.value }))}
-                    placeholder="Set a unique passcode"
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono" />
+                  <input
+                    type="text"
+                    value={draft.adminPasscode || ''}
+                    onChange={e => setDraft(p => ({ ...p, adminPasscode: e.target.value }))}
+                    placeholder="Enter passcode"
+                    className={`${inputCls} font-mono`}
+                  />
                 </div>
                 {bookType === 'paid' && (
                   <div>
                     <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1">Price (₦)</label>
-                    <input type="number" value={draft.payment?.price || ''} onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, price: Number(e.target.value) } }))}
+                    <input
+                      type="number"
+                      value={draft.payment?.price || ''}
+                      onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, price: Number(e.target.value) } }))}
                       placeholder="e.g. 5000"
-                      className="w-full bg-slate-950 border border-slate-800 px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                      className={inputCls}
+                    />
                   </div>
                 )}
               </div>
 
               {bookType === 'paid' && (
-                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-                  <label className="text-[10px] uppercase tracking-wider text-amber-400 block mb-3">💳 Payment Account</label>
+                <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/70 space-y-3">
+                  <label className="text-[10px] uppercase tracking-wider text-[#C8862A] block font-bold font-mono">💳 Payment Account</label>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-1">Account Name</label>
-                      <input type="text" value={draft.payment?.accountName || ''} onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, accountName: e.target.value } }))}
-                        className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                      <input
+                        type="text"
+                        value={draft.payment?.accountName || ''}
+                        onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, accountName: e.target.value } }))}
+                        className={inputCls}
+                      />
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-1">Account Number</label>
-                      <input type="text" value={draft.payment?.accountNumber || ''} onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, accountNumber: e.target.value } }))}
-                        className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono" />
+                      <input
+                        type="text"
+                        value={draft.payment?.accountNumber || ''}
+                        onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, accountNumber: e.target.value } }))}
+                        className={`${inputCls} font-mono`}
+                      />
                     </div>
                     <div className="col-span-2">
                       <label className="text-[10px] text-slate-400 block mb-1">Bank Name</label>
-                      <input type="text" value={draft.payment?.bankName || ''} onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, bankName: e.target.value } }))}
-                        className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                      <input
+                        type="text"
+                        value={draft.payment?.bankName || ''}
+                        onChange={e => setDraft(p => ({ ...p, payment: { ...p.payment!, bankName: e.target.value } }))}
+                        className={inputCls}
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
-              <button onClick={handleCreate} disabled={creating || !draft.title?.trim()} className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-sm py-3.5 rounded-xl transition shadow-md mt-2">
-                {creating ? 'Creating…' : '🚀 Create Landing Page'}
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating || !draft.title?.trim()}
+                className="w-full bg-[#C8862A] hover:bg-[#d8963a] disabled:opacity-50 text-slate-950 font-bold text-sm py-3.5 rounded-xl transition shadow-md mt-2"
+              >
+                {creating ? 'Creating...' : '🚀 Launch Playbook Page'}
               </button>
             </div>
 
-            <button onClick={() => setCreateOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 font-bold">✕</button>
+            <button type="button" onClick={() => setCreateOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-white">✕</button>
           </div>
         </div>
       )}
