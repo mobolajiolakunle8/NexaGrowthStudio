@@ -166,7 +166,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
 
           <div className="relative mx-auto max-w-4xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#C8862A]/30 bg-[#C8862A]/10 px-3.5 py-1 text-[10px] font-[JetBrains_Mono] font-semibold uppercase tracking-[0.22em] text-[#C8862A] mb-5">
-              <span>{book.kicker || (isFree ? 'Free Business Book' : 'Executive Edition')}</span>
+              <span>{book.kicker || (isFree ? 'Free Edition' : 'Published Edition')}</span>
             </div>
 
             <h1 className="font-[Space_Grotesk] font-bold text-[34px] sm:text-[46px] md:text-[56px] leading-[1.08] tracking-[-0.02em] max-w-3xl mx-auto text-white">
@@ -210,7 +210,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
           <div className="grid grid-cols-3 gap-3 rounded-2xl border border-[rgba(14,20,32,0.08)] bg-white p-5 text-center shadow-sm mb-14">
             <div>
               <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Format</p>
-              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">PDF Book</p>
+              <p className="font-[Space_Grotesk] font-bold text-sm text-[#0E1420] mt-1">Digital Book (PDF)</p>
             </div>
             <div className="border-x border-[rgba(14,20,32,0.08)]">
               <p className="font-[JetBrains_Mono] text-[9.5px] uppercase tracking-widest text-[#0E1420]/50">Access</p>
@@ -271,7 +271,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
               onClick={() => { setSent(false); setResult(null); setOpen(true); }}
               className="mt-8 rounded-full bg-[#C8862A] px-8 py-4 font-[JetBrains_Mono] text-xs font-bold uppercase tracking-[0.16em] text-[#0E1420] hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
             >
-              {isFree ? 'Get Instant Download Link →' : `Order for ${priceDisplay} →`}
+              {isFree ? 'Get Instant Download Link →' : `Order Book for ${priceDisplay} →`}
             </button>
           </section>
         </main>

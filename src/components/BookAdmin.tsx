@@ -510,7 +510,7 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-2xl mx-auto space-y-5">
               <div className="flex justify-between items-center pb-3 border-b border-slate-800">
-                <h2 className="font-[Space_Grotesk] text-lg font-bold text-white">Book Copy & Messaging</h2>
+                <h2 className="font-[Space_Grotesk] text-lg font-bold text-white">Book Copy &amp; Messaging</h2>
                 <button onClick={handleSaveBook} disabled={saving} className="bg-[#C8862A] hover:bg-[#d8963a] text-slate-950 font-bold text-xs px-5 py-2.5 rounded-xl transition disabled:opacity-50">
                   {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Save Changes'}
                 </button>

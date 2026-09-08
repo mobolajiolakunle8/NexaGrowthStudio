@@ -19,14 +19,17 @@ import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
 import PublishingHome from './components/PublishingHome';
+import GeneralPressHome from './components/GeneralPressHome';
 
 function parseHash(): {
   bookSlug?: string;
   megaAdmin?: boolean;
   bookAdmin?: string;
+  isGeneralPress?: boolean;
 } {
   const raw = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
   if (raw === 'admin' || raw === 'admin/login') return { megaAdmin: true };
+  if (raw === 'general' || raw.startsWith('general/')) return { isGeneralPress: true };
   if (raw.startsWith('admin/book/')) return { bookAdmin: raw.replace('admin/book/', '') };
   if (raw.startsWith('book/')) return { bookSlug: raw.replace('book/', '') };
   return {};
@@ -34,12 +37,12 @@ function parseHash(): {
 
 const SEED_BOOK: Book = {
   id: 'seed_sbsp_001',
-  slug: 'small-business-sales-book',
-  title: 'The Small Business Sales Book',
+  slug: 'small-business-sales-playbook',
+  title: 'The Small Business Sales Playbook',
   subtitle: 'A practical, no-fluff guide to closing more sales and growing your business — written for Nigerian small business owners.',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
-  kicker: 'Free Business Book',
+  kicker: 'Free Business Playbook',
   type: 'free',
   whatsInside: [
     'A simple framework for understanding your ideal customer and speaking directly to their needs.',
@@ -56,7 +59,7 @@ const SEED_BOOK: Book = {
     accountName: 'Olakunle Samuel',
     accountNumber: '0123456789',
     bankName: 'GTBank',
-    thankYouMessage: "Thank you for downloading The Small Business Sales Book! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
+    thankYouMessage: "Thank you for downloading The Small Business Sales Playbook! We hope it transforms your sales and helps you grow the business you deserve. If this guide added value, please consider supporting our work so we can keep creating free resources for Nigerian business owners.",
     donationMessage: 'Support our mission — donate any amount you wish.',
   },
 };
@@ -65,6 +68,7 @@ type ViewMode =
   | { type: 'landing'; book: Book }
   | { type: 'book-admin'; book: Book }
   | { type: 'mega-admin' }
+  | { type: 'general-press' }
   | { type: 'none' };
 
 export default function App() {
@@ -152,6 +156,10 @@ export default function App() {
         setMegaPasscodeOpen(true);
         return;
       }
+      if (parsed.isGeneralPress) {
+        setView({ type: 'general-press' });
+        return;
+      }
       if (parsed.bookAdmin) {
         const book = books.find(b => b.slug === parsed.bookAdmin);
         if (book) {
@@ -236,6 +244,10 @@ export default function App() {
       return (
         <BookLanding book={view.book} settings={siteSettings} onAdminAccess={() => setView({ type: 'book-admin', book: view.book })} />
       );
+    }
+
+    if (view.type === 'general-press') {
+      return <GeneralPressHome books={books} settings={siteSettings} />;
     }
 
     return <PublishingHome books={books} settings={siteSettings} />;

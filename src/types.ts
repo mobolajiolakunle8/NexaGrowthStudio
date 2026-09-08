@@ -1,4 +1,5 @@
 export type BookType = 'free' | 'paid';
+export type BookCategory = 'business' | 'general';
 
 export interface DonationInfo {
   accountName: string;
@@ -26,6 +27,8 @@ export interface Book {
   authorRole: string;
   kicker: string;
   type: BookType;
+  category?: BookCategory; // 'business' or 'general' (for the General Press)
+  genre?: string; // e.g. Fiction, Memoir, Poetry, Life & Faith, Leadership
   price?: number;
   currency?: string;
   coverImage?: string;
@@ -89,29 +92,30 @@ export interface SiteSettings {
   catalogueSummary: string;
   contactWhatsapp: string;
   officialEmail: string;
-  otherSiteEnabled: boolean;
-  otherSiteName: string;
-  otherSiteUrl: string;
-  otherSiteDescription: string;
-  otherSiteButtonText: string;
   contactEyebrow: string;
   contactWhatsappCta: string;
   contactEmailCta: string;
   newsletterHeading: string;
   newsletterSubtitle: string;
   copyrightText: string;
+
+  // General Books Press settings
+  generalPressName?: string;
+  generalPressTagline?: string;
+  generalPressHeading?: string;
+  generalPressSubtitle?: string;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   studioName: 'Nexa Growth Studio',
   studioTagline: 'Independent Publishing & Growth Lab',
   location: 'Ibadan, Nigeria',
-  navCatalogueLabel: 'Catalogue',
+  navCatalogueLabel: 'Business Library',
   navManifestoLabel: 'Standard',
   navFounderLabel: 'Behind Nexa',
   heroKicker: 'Ibadan · Nigeria · Est. 2024',
   heroTitle: 'Books that teach business properly.',
-  heroSubtitle: 'We publish practical, field-tested books for African founders and small-business owners. No theory for theory’s sake — just clear books you can apply the same week you read them.',
+  heroSubtitle: 'We publish practical, field-tested guides for African founders and small-business owners. No theory for theory’s sake — just clear, actionable books you can apply the same week you read them.',
   heroBadgeText: 'Field-tested business books',
   heroPrimaryCta: 'Explore Publications',
   heroSecondaryCta: 'Meet the Founder',
@@ -147,17 +151,18 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   catalogueSummary: 'Available now. Delivered directly on WhatsApp or immediate download.',
   contactWhatsapp: '+2349030192034',
   officialEmail: 'nexagrowthstudio.ng@gmail.com',
-  otherSiteEnabled: true,
-  otherSiteName: 'Nexa General Books',
-  otherSiteUrl: '',
-  otherSiteDescription: 'Explore our wider collection — fiction, non-fiction, children’s books, inspirational titles, and general reading.',
-  otherSiteButtonText: 'Visit General Books',
   contactEyebrow: 'Direct Publisher Dispatch',
   contactWhatsappCta: 'Message on WhatsApp',
   contactEmailCta: 'Email the Studio',
   newsletterHeading: 'Be first to read every new release.',
   newsletterSubtitle: 'New books, free sample chapters, and field notes on scaling Nigerian businesses. Direct to your inbox or WhatsApp, zero spam.',
   copyrightText: 'Nexa Growth Studio. Published with pride in Ibadan, Nigeria.',
+
+  // General Books Press defaults
+  generalPressName: 'Nexa General Press',
+  generalPressTagline: 'Literature, Thought & Contemporary Voices',
+  generalPressHeading: 'Stories, Memoirs & Ideas Beyond Business.',
+  generalPressSubtitle: 'From memoirs and creative non-fiction to cultural essays, faith, poetry, and lifestyle. A dedicated imprint for powerful African storytelling and thought-provoking books.',
 };
 
 export const MEGA_ADMIN_PASSCODE_KEY = 'nexa_mega_admin_passcode';

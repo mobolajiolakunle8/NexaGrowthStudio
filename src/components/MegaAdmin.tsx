@@ -20,14 +20,16 @@ interface Props {
 
 const EMPTY_FREE_BOOK = (): Partial<Book> => ({
   type: 'free',
+  category: 'business',
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
-  kicker: 'Free Business Book',
+  kicker: 'Free Book Edition',
+  genre: 'Business & Strategy',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Get your free copy',
-  ctaSubtitle: 'Enter your details. The guide is delivered to you immediately.',
+  ctaSubtitle: 'Enter your details. The book is delivered to you immediately.',
   adminWhatsapp: '+2349030192034',
   adminPasscode: 'admin123',
   published: false,
@@ -42,11 +44,13 @@ const EMPTY_FREE_BOOK = (): Partial<Book> => ({
 
 const EMPTY_PAID_BOOK = (): Partial<Book> => ({
   type: 'paid',
+  category: 'business',
   title: '',
   subtitle: '',
   author: 'Olakunle Samuel',
   authorRole: 'Founder & Publisher',
   kicker: 'Executive Edition',
+  genre: 'Business & Strategy',
   whatsInside: ['First key insight of this book.', 'Second key insight.', 'Third key insight.'],
   ctaTitle: 'Secure your copy',
   ctaSubtitle: 'Complete payment and receive the permanent book link automatically on WhatsApp.',
@@ -133,8 +137,10 @@ export default function MegaAdmin({
       subtitle: draft.subtitle || '',
       author: draft.author || settings.founderName,
       authorRole: draft.authorRole || settings.founderRole,
-      kicker: draft.kicker || (bookType === 'free' ? 'Free Business Book' : 'Executive Edition'),
+      kicker: draft.kicker || (bookType === 'free' ? 'Free Book Edition' : 'Published Edition'),
       type: bookType,
+      category: draft.category || 'business',
+      genre: draft.genre || (draft.category === 'general' ? 'General Literature' : 'Business & Strategy'),
       whatsInside: draft.whatsInside || [],
       ctaTitle: draft.ctaTitle || 'Get your copy',
       ctaSubtitle: draft.ctaSubtitle || '',
@@ -610,7 +616,7 @@ export default function MegaAdmin({
                   value={siteDraft.heroBadgeText}
                   onChange={e => setSiteDraft(p => ({ ...p, heroBadgeText: e.target.value }))}
                   className={inputCls}
-                  placeholder="e.g. Field-tested business books"
+                  placeholder="e.g. Field-tested business playbooks"
                 />
               </div>
               <div>
@@ -878,67 +884,9 @@ export default function MegaAdmin({
             </div>
           </section>
 
-          {/* Sister / General Publishing Website */}
-          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">🌐 Other Publishing Website</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Add a button that redirects visitors to your separate website for general books, fiction, children’s books, inspirational titles, and other non-business publications.
-            </p>
-            <label className="flex items-center gap-3 text-xs text-slate-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={siteDraft.otherSiteEnabled}
-                onChange={e => setSiteDraft(p => ({ ...p, otherSiteEnabled: e.target.checked }))}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-900 accent-[#C8862A]"
-              />
-              Show the other website button on the homepage
-            </label>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Website Name</label>
-                <input
-                  type="text"
-                  value={siteDraft.otherSiteName}
-                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteName: e.target.value }))}
-                  className={inputCls}
-                  placeholder="Nexa General Books"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Button Text</label>
-                <input
-                  type="text"
-                  value={siteDraft.otherSiteButtonText}
-                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteButtonText: e.target.value }))}
-                  className={inputCls}
-                  placeholder="Visit General Books"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Full Website URL</label>
-                <input
-                  type="url"
-                  value={siteDraft.otherSiteUrl}
-                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteUrl: e.target.value }))}
-                  className={inputCls}
-                  placeholder="https://your-other-book-website.com"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Description</label>
-                <textarea
-                  rows={2}
-                  value={siteDraft.otherSiteDescription}
-                  onChange={e => setSiteDraft(p => ({ ...p, otherSiteDescription: e.target.value }))}
-                  className={inputCls}
-                />
-              </div>
-            </div>
-          </section>
-
           {/* Contact & Dispatch */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact & Footer Dispatch</h3>
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact &amp; Footer Dispatch</h3>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Contact WhatsApp Number</label>
@@ -1011,6 +959,56 @@ export default function MegaAdmin({
                   value={siteDraft.contactEmailCta}
                   onChange={e => setSiteDraft(p => ({ ...p, contactEmailCta: e.target.value }))}
                   className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* General Books Press Imprint Settings */}
+          <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div>
+              <h3 className="font-[Space_Grotesk] font-bold text-base text-[#E5A99B]">📖 Nexa General Press (Secondary Imprint)</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Customize the branding for your non-business publishing house (#/general).</p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Imprint Name</label>
+                <input
+                  type="text"
+                  value={siteDraft.generalPressName || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalPressName: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Nexa General Press"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Tagline</label>
+                <input
+                  type="text"
+                  value={siteDraft.generalPressTagline || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalPressTagline: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Literature, Memoirs &amp; Contemporary Voices"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Homepage Headline</label>
+                <input
+                  type="text"
+                  value={siteDraft.generalPressHeading || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalPressHeading: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Stories, Memoirs &amp; Ideas Beyond Business."
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Homepage Subtitle / Description</label>
+                <textarea
+                  rows={3}
+                  value={siteDraft.generalPressSubtitle || ''}
+                  onChange={e => setSiteDraft(p => ({ ...p, generalPressSubtitle: e.target.value }))}
+                  className={inputCls}
+                  placeholder="Describe your general publishing catalogue..."
                 />
               </div>
             </div>
@@ -1133,12 +1131,56 @@ export default function MegaAdmin({
         </div>
       )}
 
-      {/* Modal: Create Book */}
+      {/* Modal: Create Playbook */}
       {createOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center px-6 py-8 overflow-y-auto" onClick={() => setCreateOpen(false)}>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-xl w-full shadow-2xl relative my-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Book</h3>
+            <h3 className="font-[Space_Grotesk] text-xl font-bold text-[#C8862A] mb-1">Create New Publication</h3>
             <p className="text-xs text-slate-400 mb-5">Set up your book’s landing page. You can customize all copy later.</p>
+
+            {/* Imprint Switcher (Business Books vs General Press Books) */}
+            <div className="mb-4">
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1.5 font-mono">Publishing Imprint / Category *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDraft(p => ({ ...p, category: 'business' }))}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left ${
+                    (draft.category || 'business') === 'business'
+                      ? 'bg-[#C8862A]/20 border-[#C8862A] text-[#C8862A]'
+                      : 'bg-slate-800 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  🏢 Nexa Business Books
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Strategy, sales, growth</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft(p => ({ ...p, category: 'general', genre: p.genre || 'Memoir & Biography' }))}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left ${
+                    draft.category === 'general'
+                      ? 'bg-[#8A2846]/30 border-[#8A2846] text-[#E5A99B]'
+                      : 'bg-slate-800 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  📖 Nexa General Press
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Literature, memoirs, ideas</span>
+                </button>
+              </div>
+            </div>
+
+            {draft.category === 'general' && (
+              <div className="mb-4">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Genre / Classification</label>
+                <input
+                  type="text"
+                  value={draft.genre || ''}
+                  onChange={e => setDraft(p => ({ ...p, genre: e.target.value }))}
+                  placeholder="e.g. Memoir &amp; Biography, Fiction, Life &amp; Faith, Poetry"
+                  className={inputCls}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 mb-5">
               <button
@@ -1168,7 +1210,7 @@ export default function MegaAdmin({
                   type="text"
                   value={draft.title || ''}
                   onChange={e => setDraft(p => ({ ...p, title: e.target.value }))}
-                  placeholder="e.g. The Small Business Sales Book"
+                  placeholder="e.g. The Small Business Sales Playbook"
                   className={inputCls}
                 />
               </div>
