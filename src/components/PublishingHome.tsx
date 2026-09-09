@@ -417,7 +417,7 @@ export default function PublishingHome({ books, settings }: Props) {
             </p>
           </div>
           <div className="mt-12 grid max-w-5xl mx-auto items-center gap-10 md:grid-cols-[0.85fr_1.15fr] md:gap-14">
-            {/* Portrait */}
+            {/* Portrait — name flows over the image */}
             <div className="relative mx-auto w-full max-w-[340px]">
               <div className={`relative overflow-hidden rounded-[28px] shadow-2xl ${dark ? 'ring-1 ring-white/10' : 'ring-1 ring-[#0E1420]/10'}`}>
                 {settings.founderPhoto ? (
@@ -427,15 +427,20 @@ export default function PublishingHome({ books, settings }: Props) {
                     className="aspect-[4/5] w-full object-cover"
                   />
                 ) : (
-                  <div className={`aspect-[4/5] w-full grid place-items-center ${dark ? 'bg-[#0E1420]' : 'bg-[#0E1420]'}`}>
+                  <div className="aspect-[4/5] w-full grid place-items-center bg-[#0E1420]">
                     <span className="font-[Space_Grotesk] text-7xl font-black text-[#C8862A]">
                       {(settings.founderName || 'OS').split(' ').map(p => p[0]).slice(0, 2).join('') || 'N'}
                     </span>
                   </div>
                 )}
-                <div className={`absolute -bottom-5 -right-3 rounded-2xl px-5 py-3 shadow-xl backdrop-blur-md ${dark ? 'bg-[#192231]/95 ring-1 ring-white/10' : 'bg-white ring-1 ring-[#0E1420]/10'}`}>
-                  <p className="font-[Space_Grotesk] text-[14px] font-bold">{settings.founderName}</p>
-                  <p className="font-[JetBrains_Mono] text-[8.5px] font-semibold uppercase tracking-[0.15em] text-[#C8862A]">{settings.founderRole}</p>
+                {/* Flowing gradient overlay with name — no box */}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent pt-20 pb-7 px-6">
+                  <p className="font-[Space_Grotesk] text-[20px] font-bold text-white leading-tight">
+                    {settings.founderName}
+                  </p>
+                  <p className="font-[JetBrains_Mono] text-[9.5px] font-semibold uppercase tracking-[0.16em] text-[#E0B27A] mt-1">
+                    {settings.founderRole}
+                  </p>
                 </div>
               </div>
             </div>

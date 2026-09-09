@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Book, Lead } from '../types';
+import type { Book, Lead, SiteSettings } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf, normalizePhoneForWA } from '../storage';
 import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
 import { PaymentProofUpload } from './PaymentProofUpload';
@@ -8,11 +8,12 @@ import { sendWeb3Form, purchaseDeliveryTemplate } from '../email';
 interface Props {
   book: Book;
   officialEmail: string;
+  siteSettings: SiteSettings;
   onUpdateBook: (updated: Book) => void;
   onBack: () => void;
 }
 
-export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }: Props) {
+export default function BookAdmin({ book, officialEmail, siteSettings, onUpdateBook, onBack }: Props) {
   const leads = loadLeads().filter(l => l.bookId === book.id);
   const [editBook, setEditBook] = useState<Book>(book);
   const [tab, setTab] = useState<'leads' | 'edit' | 'assets'>('leads');
@@ -179,51 +180,12 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
       return;
     }
     setEmailStatus('sending');
-    // Build a settings snapshot with the official email passed in as a prop
-    const emailSettings = {
-      studioName: 'Nexa Growth Studio',
-      studioTagline: 'Independent Publishing & Growth Lab',
-      location: 'Ibadan, Nigeria',
-      founderName: book.author,
-      founderRole: 'Founder & Publisher',
-      founderBadge: 'Publisher',
-      founderPhoto: '',
-      founderQuote: '',
-      founderBioParagraph1: '',
-      founderBioParagraph2: '',
-      founderTags: [],
-      manifestoEyebrow: '',
-      manifestoHeading: '',
-      manifestoCards: [],
-      catalogueEyebrow: '',
-      catalogueHeading: '',
-      catalogueSummary: '',
-      contactWhatsapp: '',
-      contactEyebrow: '',
-      contactWhatsappCta: '',
-      contactEmailCta: '',
-      newsletterHeading: '',
-      newsletterSubtitle: '',
-      copyrightText: 'Nexa Growth Studio',
+    const payload = purchaseDeliveryTemplate(book, lead, {
+      ...siteSettings,
       officialEmail,
-      generalBooksUrl: '',
-      generalBooksLabel: '',
-      siteActive: true,
-      siteDeveloper: false,
-      developerNotice: '',
-      defaultTheme: 'light' as const,
-      logoImage: '',
-      navCatalogueLabel: '',
-      navManifestoLabel: '',
-      navFounderLabel: '',
-      heroKicker: '',
-      heroTitle: '',
-      heroSubtitle: '',
-      heroBadgeText: '',
-      heroPrimaryCta: '',
-      heroSecondaryCta: '',
-    };
-    const payload = purchaseDeliveryTemplate(book, lead, emailSettings);
+      founderName: siteSettings.founderName || book.author,
+      founderRole: siteSettings.founderRole || 'Founder & Publisher',
+    });
     const result = await sendWeb3Form(payload);
     if (result.ok) {
       setEmailStatus('sent');

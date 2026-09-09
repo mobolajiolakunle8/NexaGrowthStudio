@@ -265,6 +265,7 @@ export default function App() {
         <BookAdmin
           book={book}
           officialEmail={siteSettings.officialEmail}
+          siteSettings={siteSettings}
           onUpdateBook={handleUpdateBook}
           onBack={() => setRoute({ name: 'mega-admin' })}
         />

@@ -4,15 +4,21 @@ import type { Book, Lead, SiteSettings } from './types';
  * Web3Forms — transactional email delivery
  * Access key is public-safe (it only authorises sending from your form).
  */
-const WEB3FORMS_KEY = '4c5d930a-655a-4042-ac9b-9ee124ccaaef';
+const WEB3FORMS_KEY = '40d4e397-b909-47d1-ace2-6ec9c716f819';
 const WEB3FORMS_ENDPOINT = 'https://api.web3forms.com/submit';
 
 export interface EmailPayload {
+  /**
+   * Intended audience. Web3Forms always delivers to the address registered to
+   * the access_key; `to` is recorded/echoed for clarity.
+   */
   to: string;
   subject: string;
   html: string;
   from_name: string;
   reply_to?: string;
+  /** Extra recipients (buyer) added via Web3Forms ccemail. */
+  cc?: string[];
 }
 
 export interface SendResult {
@@ -173,33 +179,47 @@ function wrapEmail(opts: {
 </html>`;
 }
 
-/* ────────────────────────────────────────────────────────────────
+/* ────────────────────────────────────────────────────────────────────
    Sender
+
+   How Web3Forms delivery actually works (important for maintenance):
+   • The `access_key` is bound to ONE registered inbox — every submission
+     is delivered there. That inbox is nexagrowthstudio.ng@gmail.com.
+   • `email` sets the reply-to address (so replies reach the customer).
+   • `ccemail` sends copies to extra recipients — this is a **PRO plan**
+     feature. It is included below so it works automatically if the account
+     is upgraded. On the free plan, Web3Forms ignores it and only the
+     official inbox receives the email.
+
+   Net effect today (free plan): every lead, purchase, download request and
+   enquiry lands in nexagrowthstudio.ng@gmail.com, with reply-to set to the
+   customer so you can reply directly. Customers receive their book via
+   WhatsApp and the on-page download (both already implemented), and via CC
+   email automatically once the Web3Forms account is on a PRO plan.
+
    ──────────────────────────────────────────────────────────────── */
 export async function sendWeb3Form(payload: EmailPayload): Promise<SendResult> {
   try {
-    const body = new URLSearchParams();
-    body.append('access_key', WEB3FORMS_KEY);
-    body.append('subject', payload.subject);
-    body.append('from_name', payload.from_name);
-    body.append('email', payload.to);
-    if (payload.reply_to) body.append('reply_to', payload.reply_to);
-    body.append('message', payload.html);
+    const requestBody: Record<string, string> = {
+      access_key: WEB3FORMS_KEY,
+      subject: payload.subject,
+      from_name: payload.from_name,
+      email: payload.reply_to || payload.to,
+      message: payload.html,
+      botcheck: '',
+    };
+
+    // Extra recipients (customer copies). PRO feature; harmless on free.
+    const allRecipients = [payload.to, ...(payload.cc || [])].filter(Boolean);
+    if (allRecipients.length) {
+      requestBody.ccemail = allRecipients.join(',');
+    }
 
     const res = await fetch(WEB3FORMS_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        access_key: WEB3FORMS_KEY,
-        subject: payload.subject,
-        from_name: payload.from_name,
-        email: payload.to,
-        reply_to: payload.reply_to || '',
-        message: payload.html,
-        botcheck: '',
-      }),
+      body: JSON.stringify(requestBody),
     });
-    void body;
 
     const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
     if (res.ok && data.success) return { ok: true, message: 'Email sent successfully.' };
@@ -244,9 +264,10 @@ export function freeDeliveryTemplate(book: Book, lead: Lead, settings: SiteSetti
       footerNote: 'You are receiving this because you requested a free copy from our website. If this wasn’t you, you can ignore this email.',
     }),
     subject: `Your free copy: ${book.title}`,
-    to: lead.email,
+    to: settings.officialEmail,
+    cc: [lead.email],
     from_name: settings.studioName,
-    reply_to: settings.officialEmail,
+    reply_to: lead.email,
   };
 }
 
@@ -294,9 +315,10 @@ export function purchaseDeliveryTemplate(book: Book, lead: Lead, settings: SiteS
       footerNote: 'This receipt confirms your purchase. You may be contacted on WhatsApp to confirm delivery.',
     }),
     subject: `Payment confirmed · ${book.title}`,
-    to: lead.email,
+    to: settings.officialEmail,
+    cc: [lead.email],
     from_name: settings.studioName,
-    reply_to: settings.officialEmail,
+    reply_to: lead.email,
   };
 }
 
@@ -358,8 +380,9 @@ export function enquiryAcknowledgementTemplate(book: Book, lead: Lead, settings:
       footerNote: 'You are receiving this because you submitted your details on our website.',
     }),
     subject: `We received your request · ${book.title}`,
-    to: lead.email,
+    to: settings.officialEmail,
+    cc: [lead.email],
     from_name: settings.studioName,
-    reply_to: settings.officialEmail,
+    reply_to: lead.email,
   };
 }
