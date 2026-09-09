@@ -3,6 +3,7 @@ import type { Book, Lead } from '../types';
 import { saveLeads, loadLeads, downloadGuidePdf, normalizePhoneForWA } from '../storage';
 import { deleteLeadInCloud, updateLeadInCloud, uploadBookAsset } from '../cloud';
 import { PaymentProofUpload } from './PaymentProofUpload';
+import { sendWeb3Form, purchaseDeliveryTemplate } from '../email';
 
 interface Props {
   book: Book;
@@ -169,25 +170,80 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
     recordDelivery(lead, 'WhatsApp');
   };
 
-  const sendPaidBookViaEmail = (lead: Lead) => {
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+
+  const sendPaidBookViaEmail = async (lead: Lead) => {
     const link = getDirectDownloadLink();
     if (!link) {
       notifyMissingHostedLink();
       return;
     }
-    const subject = `Your copy of ${book.title}`;
-    const body = [
-      `Hi ${lead.name},`,
-      '',
-      `Your payment for "${book.title}" has been confirmed.`,
-      '',
-      `Download your book here: ${link}`,
-      '',
-      'Thank you for your purchase.',
-      book.author,
-    ].join('\n');
-    window.location.href = `mailto:${encodeURIComponent(lead.email)}?cc=${encodeURIComponent(officialEmail)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    recordDelivery(lead, 'Email');
+    setEmailStatus('sending');
+    // Build a settings snapshot with the official email passed in as a prop
+    const emailSettings = {
+      studioName: 'Nexa Growth Studio',
+      studioTagline: 'Independent Publishing & Growth Lab',
+      location: 'Ibadan, Nigeria',
+      founderName: book.author,
+      founderRole: 'Founder & Publisher',
+      founderBadge: 'Publisher',
+      founderPhoto: '',
+      founderQuote: '',
+      founderBioParagraph1: '',
+      founderBioParagraph2: '',
+      founderTags: [],
+      manifestoEyebrow: '',
+      manifestoHeading: '',
+      manifestoCards: [],
+      catalogueEyebrow: '',
+      catalogueHeading: '',
+      catalogueSummary: '',
+      contactWhatsapp: '',
+      contactEyebrow: '',
+      contactWhatsappCta: '',
+      contactEmailCta: '',
+      newsletterHeading: '',
+      newsletterSubtitle: '',
+      copyrightText: 'Nexa Growth Studio',
+      officialEmail,
+      generalBooksUrl: '',
+      generalBooksLabel: '',
+      siteActive: true,
+      siteDeveloper: false,
+      developerNotice: '',
+      defaultTheme: 'light' as const,
+      logoImage: '',
+      navCatalogueLabel: '',
+      navManifestoLabel: '',
+      navFounderLabel: '',
+      heroKicker: '',
+      heroTitle: '',
+      heroSubtitle: '',
+      heroBadgeText: '',
+      heroPrimaryCta: '',
+      heroSecondaryCta: '',
+    };
+    const payload = purchaseDeliveryTemplate(book, lead, emailSettings);
+    const result = await sendWeb3Form(payload);
+    if (result.ok) {
+      setEmailStatus('sent');
+      recordDelivery(lead, 'Email');
+    } else {
+      setEmailStatus('failed');
+      // Fallback: open mail client with pre-filled content
+      const subject = `Your copy of ${book.title}`;
+      const body = [
+        `Hi ${lead.name},`,
+        '',
+        `Your payment for "${book.title}" has been confirmed.`,
+        '',
+        `Download your book here: ${link}`,
+        '',
+        'Thank you for your purchase.',
+        book.author,
+      ].join('\n');
+      window.location.href = `mailto:${encodeURIComponent(lead.email)}?cc=${encodeURIComponent(officialEmail)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
   };
 
   const copyPaidBookLink = async () => {
@@ -472,10 +528,17 @@ export default function BookAdmin({ book, officialEmail, onUpdateBook, onBack }:
                           📲 Re-send on WhatsApp
                         </button>
                         <button
-                          onClick={() => sendPaidBookViaEmail(selectedLead)}
-                          className="w-full rounded-xl bg-[#C8862A] py-2.5 text-xs font-bold text-slate-950 transition hover:opacity-90"
+                          onClick={() => void sendPaidBookViaEmail(selectedLead)}
+                          disabled={emailStatus === 'sending'}
+                          className="w-full rounded-xl bg-[#C8862A] py-2.5 text-xs font-bold text-slate-950 transition hover:opacity-90 disabled:opacity-60"
                         >
-                          📧 Send via Email
+                          {emailStatus === 'sending'
+                            ? 'Sending…'
+                            : emailStatus === 'sent'
+                              ? '✓ Email delivered'
+                              : emailStatus === 'failed'
+                                ? '⚠ Send failed — try again'
+                                : '📧 Send via Email'}
                         </button>
                         <button
                           onClick={() => void copyPaidBookLink()}

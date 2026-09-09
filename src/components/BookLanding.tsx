@@ -5,6 +5,12 @@ import { createLeadInCloud } from '../cloud';
 import BookCover from './BookCover';
 import BrandLogo from './BrandLogo';
 import ThemeToggle from './ThemeToggle';
+import {
+  sendWeb3Form,
+  freeDeliveryTemplate,
+  enquiryAcknowledgementTemplate,
+  adminLeadTemplate,
+} from '../email';
 
 const isValidName = (v: string) => v.trim().length >= 2;
 const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -23,6 +29,7 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [buyerEmailStatus, setBuyerEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('nexa_public_theme');
@@ -120,6 +127,26 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
     await createLeadInCloud(newLead).catch(error => {
       console.error('Lead cloud save failed:', error);
     });
+
+    // ── Web3Forms transactional emails (fire-and-forget, never blocks UI) ──
+    void (async () => {
+      try {
+        // 1) Buyer-facing email
+        const buyerPayload =
+          book.type === 'free'
+            ? freeDeliveryTemplate(book, newLead, settings)
+            : enquiryAcknowledgementTemplate(book, newLead, settings);
+        const buyerRes = await sendWeb3Form(buyerPayload);
+        setBuyerEmailStatus(buyerRes.ok ? 'sent' : 'failed');
+
+        // 2) Admin notification
+        const adminPayload = adminLeadTemplate(book, newLead, settings);
+        await sendWeb3Form({ ...adminPayload, to: settings.officialEmail });
+      } catch (e) {
+        console.error('Email dispatch failed:', e);
+        setBuyerEmailStatus('failed');
+      }
+    })();
 
     setResult({ name: nname, email: nemail, phone: nphone });
     setName('');
@@ -326,9 +353,14 @@ export default function BookLanding({ book, settings, onAdminAccess }: Props) {
 
                 {isFree ? (
                   <>
-                    <p className="text-sm text-[#0E1420]/75 mb-5 leading-relaxed">
+                    <p className="text-sm text-[#0E1420]/75 mb-3 leading-relaxed">
                       {book.donation?.thankYouMessage || `Thank you for requesting "${book.title}". Your copy has been triggered.`}
                     </p>
+                    {buyerEmailStatus === 'sent' && (
+                      <p className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 font-[JetBrains_Mono] text-[9.5px] font-bold uppercase tracking-wider text-emerald-600">
+                        ✉ Confirmation email sent to {result.email}
+                      </p>
+                    )}
 
                     {book.donation && (
                       <div className="rounded-2xl border border-[rgba(14,20,32,0.1)] bg-[#0E1420] text-[#FAF7F2] p-5 text-left mb-5 shadow-inner">
