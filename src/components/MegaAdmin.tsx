@@ -82,6 +82,7 @@ export default function MegaAdmin({
   const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [tagDraft, setTagDraft] = useState('');
 
   // Frontpage Editor State
   const [siteDraft, setSiteDraft] = useState<SiteSettings>(settings);
@@ -514,7 +515,6 @@ export default function MegaAdmin({
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredBooks.map(book => {
                 const bookLeads = allLeads.filter(l => l.bookId === book.id);
-                const bookPaid = bookLeads.filter(l => l.paid).length;
                 const duplicateLeads = new Set<string>();
                 bookLeads.forEach(lead => {
                   const key = `${lead.email.toLowerCase()}-${lead.phone.replace(/\D/g,'')}`;
@@ -991,20 +991,56 @@ export default function MegaAdmin({
               </div>
             </div>
 
+            {/* Subject Tags — easy chip editor (add / remove individual tags) */}
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Subject Tags (Comma-separated)</label>
-              <input
-                type="text"
-                value={siteDraft.founderTags.join(', ')}
-                onChange={e => setSiteDraft(p => ({ ...p, founderTags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
-                className={inputCls}
-              />
+              <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-2 font-mono">Subject Tags (click ✕ to remove, type + Enter to add)</label>
+              <div className="flex flex-wrap gap-2">
+                {siteDraft.founderTags.map((tag, i) => (
+                  <span key={`${tag}-${i}`} className="inline-flex items-center gap-2 bg-[#C8862A]/12 text-[#C8862A] ring-1 ring-[#C8862A]/25 rounded-full pl-3 pr-1.5 py-1.5 text-xs font-semibold">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setSiteDraft(p => ({ ...p, founderTags: p.founderTags.filter((_, j) => j !== i) }))}
+                      className="w-5 h-5 grid place-items-center rounded-full hover:bg-[#C8862A]/25 hover:text-white transition"
+                      title="Remove tag"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  placeholder="+ add tag"
+                  value={tagDraft}
+                  onChange={e => setTagDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      const val = tagDraft.trim().replace(/,+$/, '');
+                      if (val) {
+                        setSiteDraft(p => ({ ...p, founderTags: [...p.founderTags, val] }));
+                        setTagDraft('');
+                      }
+                    }
+                  }}
+                  className="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-full text-xs focus:outline-none focus:ring-1 focus:ring-[#C8862A] w-36"
+                />
+              </div>
+              {siteDraft.founderTags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSiteDraft(p => ({ ...p, founderTags: [] }))}
+                  className="text-[10px] text-slate-500 hover:text-red-400 mt-2 hover:underline"
+                >
+                  Clear all tags
+                </button>
+              )}
             </div>
           </section>
 
           {/* Contact & Dispatch */}
           <section className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">�� Contact &amp; Footer Dispatch</h3>
+            <h3 className="font-[Space_Grotesk] font-bold text-base text-[#C8862A]">💬 Contact &amp; Footer Dispatch</h3>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Contact WhatsApp Number</label>

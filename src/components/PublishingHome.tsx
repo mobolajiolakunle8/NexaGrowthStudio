@@ -408,6 +408,66 @@ export default function PublishingHome({ books, settings }: Props) {
         </div>
       </section>
 
+      {/* The Mind Behind Nexa Growth Studio */}
+      <section id="founder" className={`py-20 border-y scroll-mt-20 ${dark ? 'border-white/10 bg-[#101722]' : 'border-[#0E1420]/10 bg-[#F2EBDD]'}`}>
+        <div className="mx-auto max-w-6xl px-5">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="inline-flex items-center justify-center gap-2 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.28em] text-[#C8862A]">
+              <Sparkles size={12} /> {settings.founderBadge}
+            </p>
+          </div>
+          <div className="mt-12 grid max-w-5xl mx-auto items-center gap-10 md:grid-cols-[0.85fr_1.15fr] md:gap-14">
+            {/* Portrait */}
+            <div className="relative mx-auto w-full max-w-[340px]">
+              <div className={`relative overflow-hidden rounded-[28px] shadow-2xl ${dark ? 'ring-1 ring-white/10' : 'ring-1 ring-[#0E1420]/10'}`}>
+                {settings.founderPhoto ? (
+                  <img
+                    src={settings.founderPhoto}
+                    alt={settings.founderName}
+                    className="aspect-[4/5] w-full object-cover"
+                  />
+                ) : (
+                  <div className={`aspect-[4/5] w-full grid place-items-center ${dark ? 'bg-[#0E1420]' : 'bg-[#0E1420]'}`}>
+                    <span className="font-[Space_Grotesk] text-7xl font-black text-[#C8862A]">
+                      {(settings.founderName || 'OS').split(' ').map(p => p[0]).slice(0, 2).join('') || 'N'}
+                    </span>
+                  </div>
+                )}
+                <div className={`absolute -bottom-5 -right-3 rounded-2xl px-5 py-3 shadow-xl backdrop-blur-md ${dark ? 'bg-[#192231]/95 ring-1 ring-white/10' : 'bg-white ring-1 ring-[#0E1420]/10'}`}>
+                  <p className="font-[Space_Grotesk] text-[14px] font-bold">{settings.founderName}</p>
+                  <p className="font-[JetBrains_Mono] text-[8.5px] font-semibold uppercase tracking-[0.15em] text-[#C8862A]">{settings.founderRole}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quote + Bio + Tags */}
+            <div>
+              <h2 className="font-[Space_Grotesk] text-[28px] md:text-[36px] font-bold leading-[1.14] tracking-[-0.02em]">
+                &ldquo;{settings.founderQuote}&rdquo;
+              </h2>
+              <div className={`mt-6 space-y-4 text-[14.5px] leading-[1.75] ${dark ? 'text-white/70' : 'text-[#0E1420]/75'}`}>
+                {settings.founderBioParagraph1 && <p>{settings.founderBioParagraph1}</p>}
+                {settings.founderBioParagraph2 && <p>{settings.founderBioParagraph2}</p>}
+              </div>
+              {settings.founderTags && settings.founderTags.length > 0 && (
+                <div className={`mt-8 flex flex-wrap gap-2.5 border-t pt-6 ${dark ? 'border-white/10' : 'border-[#0E1420]/10'}`}>
+                  {settings.founderTags.map(tag => (
+                    <span
+                      key={tag}
+                      className={`rounded-full px-3.5 py-1.5 font-[JetBrains_Mono] text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                        dark ? 'bg-white/8 text-white/70' : 'bg-[#0E1420] text-white'
+                      }`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Reachout */}
       <section className={`py-20 ${dark ? 'bg-[#090D15]' : 'bg-[#FAF7F2]'}`}>
         <div className="mx-auto max-w-6xl px-5">
