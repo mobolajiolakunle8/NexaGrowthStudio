@@ -4,6 +4,8 @@ import BookCover from './BookCover';
 import BrandLogo from './BrandLogo';
 import ThemeToggle from './ThemeToggle';
 import MobileNav from './MobileNav';
+import Footer from './Footer';
+import SubscribeForm from './SubscribeForm';
 
 import {
   ArrowRight,
@@ -14,13 +16,12 @@ import {
   Star,
   HelpCircle,
   ChevronRight,
-  MessageCircle,
-  Mail,
 } from 'lucide-react';
 
 interface Props {
   books: Book[];
   settings: SiteSettings;
+  onNavigate: (href: string) => void;
 }
 
 const THEME_KEY = 'nexa_public_theme';
@@ -82,11 +83,6 @@ export default function PublishingHome({ books, settings }: Props) {
     { q: 'Do I get updates?', a: 'Yes. Existing readers get a courtesy download link when a book is updated.' },
   ];
 
-  const DEFAULT_TESTIMONIALS = [
-    { id: 't1', name: 'Chinwe O.', role: 'Founder', location: 'Lagos', message: 'Sales guide that finally stopped me discounting. Closed two contracts on Monday after finishing Sunday.', rating: 5 },
-    { id: 't2', name: 'Tunde A.', role: 'Operations Mgr', location: 'Ibadan', message: 'Execution-focused, not filler. Finished on Sunday, applied next Monday.', rating: 5 },
-  ];
-
   function handleLostLinkSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!lostEmail.trim()) return;
@@ -104,6 +100,7 @@ export default function PublishingHome({ books, settings }: Props) {
     [settings.navCatalogueLabel, '#catalogue', 'Catalogue'],
     [settings.navManifestoLabel, '#standard', 'Standard'],
     [settings.navFounderLabel, '#founder', 'Founder'],
+    ['Articles', '#/articles', 'Articles'],
   ];
 
   const darkCls = dark ? 'bg-[#090D15] text-[#F8F3EA]' : 'bg-[#FAF7F2] text-[#0E1420]';
@@ -138,12 +135,13 @@ export default function PublishingHome({ books, settings }: Props) {
             </span>
           </a>
           <nav className="hidden items-center gap-8 md:flex">
-            {['Home', 'Catalogue', 'Standard', 'Founder'].map(item => (
-              <a key={item} href={`#${item.toLowerCase()}`} className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.14em] no-underline hover:text-[#C8862A] transition-colors ${mutedCls}`}>{item}</a>
+            {navLinks.map(([label, href]) => (
+              <a key={href} href={href} className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.14em] no-underline hover:text-[#C8862A] transition-colors ${mutedCls}`}>{label}</a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle dark={dark} onToggle={toggleTheme} compact />
+            <a href="#/articles" className="hidden rounded-full border border-[#C8862A]/50 px-4 py-2 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.13em] text-[#C8862A] no-underline transition-all hover:bg-[#C8862A] hover:text-[#0E1420] sm:inline-flex">📰 Articles</a>
             <a href="#catalogue" className="hidden rounded-full bg-[#C8862A] px-4 py-2 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.13em] text-[#0E1420] no-underline transition-transform hover:-translate-y-0.5 sm:inline-flex">Browse books</a>
           </div>
         </div>
@@ -321,36 +319,40 @@ export default function PublishingHome({ books, settings }: Props) {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className={`py-20 border-y ${dark ? 'border-white/10 bg-[#101722]' : 'border-[#0E1420]/10 bg-[#F2EBDD]'}`}>
-        <div className="mx-auto max-w-6xl px-5">
-          <p className="font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.28em] text-[#C8862A]">Reader Trust</p>
-          <h2 className="mt-3 font-[Space_Grotesk] text-[29px] font-bold tracking-[-0.02em] md:text-[39px]">What Business Owners Say</h2>
-          <div className="mt-12 grid gap-6 md:grid-cols-2">
-            {DEFAULT_TESTIMONIALS.map(t => (
-              <div key={t.id} className={`relative overflow-hidden rounded-3xl border p-7 shadow-xl transition-all duration-300 hover:-translate-y-1.5 ${dark ? 'border-white/10 bg-[#131A27]' : 'border-[#0E1420]/10 bg-white'}`}>
-                <div className="flex gap-1 mb-4">
-                  {[1,2,3,4,5].map(star => (
-                    <Star key={star} size={15} className={star <= t.rating ? 'fill-[#C8862A] text-[#C8862A]' : 'text-[#0E1420]/25'} />
-                  ))}
-                </div>
-                <p className={`text-[15px] leading-[1.75] font-medium ${dark ? 'text-white/85' : 'text-[#0E1420]/80'}`}>
-                  “{t.message}”
-                </p>
-                <div className="mt-6 flex items-center gap-3 border-t pt-6" style={{ borderColor: dark ? 'rgba(255,255,255,0.1)' : 'rgba(14,20,32,0.08)' }}>
-                  <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#0E1420] font-[Space_Grotesk] font-bold text-white text-sm">OS</span>
-                  <div>
-                    <p className="font-[Space_Grotesk] text-[14px] font-bold">{t.name}</p>
-                    <p className={`font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.13em] ${mutedCls}`}>
-                      {t.role ? `${t.role}${t.location ? ' · ' + t.location : ''}` : t.location}
-                    </p>
+      {/* Testimonials (only when enabled by admin in the dashboard) */}
+      {settings.testimonialsActive !== false && settings.testimonials && settings.testimonials.length > 0 && (
+        <section className={`py-20 border-y ${dark ? 'border-white/10 bg-[#101722]' : 'border-[#0E1420]/10 bg-[#F2EBDD]'}`}>
+          <div className="mx-auto max-w-6xl px-5">
+            <p className="font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.28em] text-[#C8862A]">Reader Trust</p>
+            <h2 className="mt-3 font-[Space_Grotesk] text-[29px] font-bold tracking-[-0.02em] md:text-[39px]">What Business Owners Say</h2>
+            <div className="mt-12 grid gap-6 md:grid-cols-2">
+              {settings.testimonials.map(t => (
+                <div key={t.id} className={`relative overflow-hidden rounded-3xl border p-7 shadow-xl transition-all duration-300 hover:-translate-y-1.5 ${dark ? 'border-white/10 bg-[#131A27]' : 'border-[#0E1420]/10 bg-white'}`}>
+                  <div className="flex gap-1 mb-4">
+                    {[1,2,3,4,5].map(star => (
+                      <Star key={star} size={15} className={star <= t.rating ? 'fill-[#C8862A] text-[#C8862A]' : 'text-[#0E1420]/25'} />
+                    ))}
+                  </div>
+                  <p className={`text-[15px] leading-[1.75] font-medium ${dark ? 'text-white/85' : 'text-[#0E1420]/80'}`}>
+                    “{t.message}”
+                  </p>
+                  <div className="mt-6 flex items-center gap-3 border-t pt-6" style={{ borderColor: dark ? 'rgba(255,255,255,0.1)' : 'rgba(14,20,32,0.08)' }}>
+                    <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#0E1420] font-[Space_Grotesk] font-bold text-white text-sm">
+                      {t.name.split(' ').map(p => p[0]).slice(0, 2).join('') || 'N'}
+                    </span>
+                    <div>
+                      <p className="font-[Space_Grotesk] text-[14px] font-bold">{t.name}</p>
+                      <p className={`font-[JetBrains_Mono] text-[9px] uppercase tracking-[0.13em] ${mutedCls}`}>
+                        {t.role ? `${t.role}${t.location ? ' · ' + t.location : ''}` : t.location}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* FAQ & Transaction Support */}
       <section className={`py-20 ${dark ? 'bg-[#090D15]' : 'bg-[#FAF7F2]'}`}>
@@ -417,7 +419,7 @@ export default function PublishingHome({ books, settings }: Props) {
             </p>
           </div>
           <div className="mt-12 grid max-w-5xl mx-auto items-center gap-10 md:grid-cols-[0.85fr_1.15fr] md:gap-14">
-            {/* Portrait — name flows over the image */}
+            {/* Portrait + floating identity card */}
             <div className="relative mx-auto w-full max-w-[340px]">
               <div className={`relative overflow-hidden rounded-[28px] shadow-2xl ${dark ? 'ring-1 ring-white/10' : 'ring-1 ring-[#0E1420]/10'}`}>
                 {settings.founderPhoto ? (
@@ -433,12 +435,21 @@ export default function PublishingHome({ books, settings }: Props) {
                     </span>
                   </div>
                 )}
-                {/* Flowing gradient overlay with name — no box */}
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent pt-20 pb-7 px-6">
-                  <p className="font-[Space_Grotesk] text-[20px] font-bold text-white leading-tight">
+              </div>
+              {/* Floating name badge — glides below the photo without touching it */}
+              <div className="flex justify-center mt-5">
+                <div
+                  className={`rounded-2xl px-7 py-3.5 shadow-xl backdrop-blur-md ring-1 ${
+                    dark
+                      ? 'bg-[#192231]/95 ring-white/10'
+                      : 'bg-white ring-[#0E1420]/10'
+                  }`}
+                  style={{ minWidth: 180 }}
+                >
+                  <p className="font-[Space_Grotesk] text-[14px] font-bold leading-tight text-center">
                     {settings.founderName}
                   </p>
-                  <p className="font-[JetBrains_Mono] text-[9.5px] font-semibold uppercase tracking-[0.16em] text-[#E0B27A] mt-1">
+                  <p className="font-[JetBrains_Mono] text-[8.5px] font-semibold uppercase tracking-[0.16em] text-[#C8862A] text-center mt-0.5">
                     {settings.founderRole}
                   </p>
                 </div>
@@ -473,7 +484,7 @@ export default function PublishingHome({ books, settings }: Props) {
         </div>
       </section>
 
-      {/* Reachout */}
+      {/* Subscribe for new releases */}
       <section className={`py-20 ${dark ? 'bg-[#090D15]' : 'bg-[#FAF7F2]'}`}>
         <div className="mx-auto max-w-6xl px-5">
           <div className="relative overflow-hidden rounded-[32px] bg-[#0E1420] px-8 py-14 text-center text-white shadow-2xl md:px-16">
@@ -481,19 +492,12 @@ export default function PublishingHome({ books, settings }: Props) {
             <p className="relative font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.25em] text-[#C8862A]">{settings.contactEyebrow}</p>
             <h2 className="relative mx-auto mt-4 max-w-xl font-[Space_Grotesk] text-[29px] font-bold leading-[1.15] md:text-[39px]">{settings.newsletterHeading}</h2>
             <p className="relative mx-auto mt-4 max-w-lg text-[14px] leading-[1.7] text-white/60">{settings.newsletterSubtitle}</p>
-            <div className="relative mt-8 flex flex-col items-center gap-3.5">
-              <a href={`https://wa.me/${settings.contactWhatsapp.replace(/[^\d]/g, '')}?text=${encodeURIComponent('Hi Nexa Growth Studio, I have an enquiry about your books.')}`} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2.5 rounded-full bg-[#25D366] px-7 py-3.5 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.13em] text-[#0E1420] no-underline transition-transform hover:-translate-y-0.5 hover:shadow-lg"
-              >
-                <MessageCircle size={15} /> WhatsApp the publisher
-              </a>
-              <a href={`mailto:${settings.officialEmail}`} className="inline-flex items-center gap-2 rounded-full border border-white/25 px-6 py-3.5 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.13em] text-white no-underline transition-colors hover:bg-white/8">
-                <Mail size={15} /> {settings.contactEmailCta}
-              </a>
-            </div>
+            <SubscribeForm />
           </div>
         </div>
       </section>
+
+      <Footer settings={settings} dark={dark} />
     </div>
   );
 }

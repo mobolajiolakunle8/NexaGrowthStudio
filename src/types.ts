@@ -110,6 +110,44 @@ export interface SiteSettings {
   siteActive?: boolean;
   siteDeveloper?: boolean;
   developerNotice?: string;
+
+  // Testimonials (controlled by the Mega Admin)
+  testimonialsActive?: boolean;
+  testimonials?: Testimonial[];
+}
+
+export interface Testimonial {
+  id: string;
+  name: string;
+  role: string;
+  location: string;
+  message: string;
+  rating: number;
+}
+
+export interface Subscriber {
+  id: string;
+  email: string;
+  date: string;
+  status: 'active' | 'unsubscribed';
+}
+
+export interface Article {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  tags: string[];
+  coverImage?: string;
+  images: string[];
+  body: string[];
+  author: string;
+  readMinutes: number;
+  featured: boolean;
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -174,6 +212,13 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteActive: true,
   siteDeveloper: false,
   developerNotice: 'We are currently upgrading this section of our publishing house. New editions are being prepared — please check back shortly.',
+
+  // Testimonials start OFF — admin activates from the dashboard
+  testimonialsActive: false,
+  testimonials: [
+    { id: 't1', name: 'Chinwe O.', role: 'Founder', location: 'Lagos', message: 'Sales guide that finally stopped me discounting. Closed two contracts on Monday after finishing Sunday.', rating: 5 },
+    { id: 't2', name: 'Tunde A.', role: 'Operations Mgr', location: 'Ibadan', message: 'Execution-focused, not filler. Finished on Sunday, applied next Monday.', rating: 5 },
+  ],
 };
 
 export const SUPER_ADMIN_PASSCODE_KEY = 'nexa_super_admin_passcode';
@@ -182,6 +227,7 @@ export const SUPER_ADMIN_AUTHED_KEY = 'nexa_super_admin_authed';
 export const MEGA_ADMIN_PASSCODE_KEY = 'nexa_mega_admin_passcode';
 export const BOOKS_STORAGE_KEY = 'nexa_books_v1';
 export const LEADS_STORAGE_KEY = 'nexa_leads_v1';
+export const ARTICLES_STORAGE_KEY = 'nexa_articles_v1';
 export const SITE_SETTINGS_STORAGE_KEY = 'nexa_site_settings_v1';
 export const MEGA_ADMIN_DEFAULT = 'nexaadmin2024';
 export const CLOUD_DB_URL_KEY = 'nexa_cloud_db_url';

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Book, SiteSettings } from '../types';
+import type { Article, Book, SiteSettings } from '../types';
 import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
 import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
@@ -7,12 +7,16 @@ import {
   testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync
 } from '../cloud';
 import BrandLogo from './BrandLogo';
+import SubscriberManager from './SubscriberManager';
+import ArticleManager from './ArticleManager';
 import LeadDashboard from './LeadDashboard';
 
 interface Props {
   books: Book[];
+  articles: Article[];
   settings: SiteSettings;
   onBooksChange: (books: Book[]) => void;
+  onArticlesChange: (articles: Article[], notifyIds?: string[]) => void;
   onSettingsChange: (settings: SiteSettings) => Promise<void>;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
@@ -67,15 +71,17 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
 
 export default function MegaAdmin({
   books,
+  articles,
   settings,
   onBooksChange,
+  onArticlesChange,
   onSettingsChange,
   onEditBook,
   onViewLanding,
   megaPasscode,
   onMegaPasscodeChanged,
 }: Props) {
-  const [mainTab, setMainTab] = useState<'books' | 'frontpage' | 'settings'>('books');
+  const [mainTab, setMainTab] = useState<'books' | 'articles' | 'frontpage' | 'subscribers' | 'settings'>('books');
   const [createOpen, setCreateOpen] = useState(false);
   const [bookType, setBookType] = useState<'free' | 'paid'>('free');
   const [draft, setDraft] = useState<Partial<Book>>(EMPTY_FREE_BOOK());
@@ -153,6 +159,31 @@ export default function MegaAdmin({
     const updated = [newBook, ...books];
     onBooksChange(updated);
     saveBooks(updated);
+
+    // Notify every active subscriber of the new release (Web3Forms)
+    void (async () => {
+      try {
+        const { sendWeb3Form, newReleaseTemplate } = await import('../email');
+        const cloud = await import('../cloud');
+        const holder: { subs: Array<{ email: string; status?: string }> } = { subs: [] };
+        const stop = cloud.startSubscriberSync((subs) => { holder.subs = subs; });
+        setTimeout(async () => {
+          stop();
+          const active = (holder.subs || []).filter((s) => s.status !== 'unsubscribed');
+          let sentCount = 0;
+          for (const sub of active) {
+            try {
+              await sendWeb3Form(newReleaseTemplate(newBook, sub.email, settings));
+              sentCount += 1;
+            } catch { /* continue with next subscriber */ }
+          }
+          console.log(`Release announcements sent: ${sentCount}/${active.length}`);
+        }, 1500);
+      } catch (e) {
+        console.error('Release notification failed:', e);
+      }
+    })();
+
     setCreateOpen(false);
     setDraft(EMPTY_FREE_BOOK());
     setCreating(false);
@@ -459,12 +490,28 @@ export default function MegaAdmin({
                 📚 Books ({books.length})
               </button>
               <button
+                onClick={() => setMainTab('articles')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mainTab === 'articles' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📰 Articles ({articles.filter(a => a.published !== false).length})
+              </button>
+              <button
                 onClick={() => setMainTab('frontpage')}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                   mainTab === 'frontpage' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 🏛️ Front Page
+              </button>
+              <button
+                onClick={() => setMainTab('subscribers')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  mainTab === 'subscribers' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📬 Subscribers
               </button>
               <button
                 onClick={() => setMainTab('settings')}
@@ -576,6 +623,11 @@ export default function MegaAdmin({
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB: ARTICLES */}
+      {mainTab === 'articles' && (
+        <ArticleManager articles={articles} onArticlesChange={onArticlesChange} />
       )}
 
       {/* TAB 2: FRONTPAGE CMS */}
@@ -991,6 +1043,101 @@ export default function MegaAdmin({
               </div>
             </div>
 
+            {/* Testimonials — visibility + individual message editor */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-slate-400 block font-mono">Reader Testimony Section</label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Off hides the whole block from the home page.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSiteDraft(p => ({ ...p, testimonialsActive: !(p.testimonialsActive !== false) }))}
+                  className={`relative h-7 w-14 shrink-0 rounded-full transition-colors ${
+                    siteDraft.testimonialsActive !== false ? 'bg-[#C8862A]' : 'bg-slate-700'
+                  }`}
+                  aria-pressed={siteDraft.testimonialsActive !== false}
+                  title="Toggle testimony visibility on the home page"
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${
+                      siteDraft.testimonialsActive !== false ? 'left-8' : 'left-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {(siteDraft.testimonials || []).map((t, i) => (
+                <div key={t.id || i} className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#C8862A]">Testimony {i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).filter((_, j) => j !== i) }))}
+                      className="text-[11px] text-red-400 hover:text-red-300 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Reader name"
+                    value={t.name}
+                    onChange={e => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))}
+                    className={inputCls}
+                  />
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <input
+                      type="text"
+                      placeholder="Role (optional)"
+                      value={t.role}
+                      onChange={e => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).map((x, j) => j === i ? { ...x, role: e.target.value } : x) }))}
+                      className={inputCls}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Location (optional)"
+                      value={t.location}
+                      onChange={e => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).map((x, j) => j === i ? { ...x, location: e.target.value } : x) }))}
+                      className={inputCls}
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Testimony message"
+                    value={t.message}
+                    onChange={e => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).map((x, j) => j === i ? { ...x, message: e.target.value } : x) }))}
+                    className={inputCls}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500 mr-1">Rating</span>
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setSiteDraft(p => ({ ...p, testimonials: (p.testimonials || []).map((x, j) => j === i ? { ...x, rating: star } : x) }))}
+                        className={`text-lg leading-none transition-transform hover:scale-125 ${star <= t.rating ? 'text-[#C8862A]' : 'text-slate-700'}`}
+                        title={`${star} star${star > 1 ? 's' : ''}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setSiteDraft(p => ({
+                  ...p,
+                  testimonials: [...(p.testimonials || []), { id: `t_${Date.now()}`, name: '', role: '', location: '', message: '', rating: 5 }],
+                }))}
+                className="text-xs font-mono font-semibold text-[#C8862A] hover:underline"
+              >
+                + Add testimony
+              </button>
+            </div>
+
             {/* Subject Tags — easy chip editor (add / remove individual tags) */}
             <div>
               <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-2 font-mono">Subject Tags (click ✕ to remove, type + Enter to add)</label>
@@ -1158,6 +1305,11 @@ export default function MegaAdmin({
             {savingFrontpage ? 'Saving & Broadcasting...' : 'Save Front Page Changes'}
           </button>
         </div>
+      )}
+
+      {/* TAB: SUBSCRIBERS */}
+      {mainTab === 'subscribers' && (
+        <SubscriberManager settings={settings} books={books} />
       )}
 
       {/* TAB 3: SETTINGS & PASSWORDS */}

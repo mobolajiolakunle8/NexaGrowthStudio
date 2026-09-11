@@ -1,5 +1,5 @@
-import type { Book, Lead } from './types';
-import { BOOKS_STORAGE_KEY, LEADS_STORAGE_KEY } from './types';
+import type { Article, Book, Lead } from './types';
+import { ARTICLES_STORAGE_KEY, BOOKS_STORAGE_KEY, LEADS_STORAGE_KEY } from './types';
 
 export function loadBooks(): Book[] {
   try {
@@ -21,6 +21,22 @@ export function loadLeads(): Lead[] {
 
 export function saveLeads(leads: Lead[]) {
   try { localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(leads)); } catch { /* */ }
+}
+
+export function loadArticles(): Article[] {
+  try {
+    const raw = localStorage.getItem(ARTICLES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export function saveArticles(articles: Article[]) {
+  try { localStorage.setItem(ARTICLES_STORAGE_KEY, JSON.stringify(articles)); } catch { /* */ }
+}
+
+export function estimateReadMinutes(paragraphs: string[]): number {
+  const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
 }
 
 export function generateId() {

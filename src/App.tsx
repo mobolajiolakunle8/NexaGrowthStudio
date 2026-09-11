@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import type { Book, Lead, SiteSettings } from './types';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { Article, Book, Lead, SiteSettings } from './types';
 import {
   MEGA_ADMIN_PASSCODE_KEY,
   MEGA_ADMIN_DEFAULT,
@@ -9,24 +9,33 @@ import {
   SUPER_ADMIN_DEFAULT,
 } from './types';
 
-import { loadBooks, saveBooks } from './storage';
+import { loadArticles, loadBooks, saveArticles, saveBooks } from './storage';
 import {
   autoSyncBooks,
+  autoSyncArticles,
+  fetchActiveSubscribers,
+  fetchArticlesFromCloud,
   saveSiteSettingsToCloud,
   bootstrapCloud,
   startLiveSync,
+  startArticleSync,
   stopLiveSync,
   testConnection,
 } from './cloud';
+import { articlePublishedTemplate, sendWeb3Form } from './email';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
 import PublishingHome from './components/PublishingHome';
+import ArticlesHome from './components/ArticlesHome';
+import ArticleView from './components/ArticleView';
 import DeveloperScreen from './components/DeveloperScreen';
 import SuperAdmin from './components/SuperAdmin';
 
 type Route =
   | { name: 'home' }
+  | { name: 'articles' }
+  | { name: 'article'; slug: string }
   | { name: 'landing'; slug: string }
   | { name: 'book-admin'; slug: string }
   | { name: 'mega-admin' }
@@ -36,6 +45,8 @@ function parseHash(): Route {
   const raw = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
   if (raw === 'admin' || raw === 'admin/login') return { name: 'mega-admin' };
   if (raw === 'super' || raw.startsWith('super/')) return { name: 'super-admin' };
+  if (raw === 'articles') return { name: 'articles' };
+  if (raw.startsWith('article/')) return { name: 'article', slug: raw.replace('article/', '') };
   if (raw.startsWith('admin/book/')) return { name: 'book-admin', slug: raw.replace('admin/book/', '') };
   if (raw.startsWith('book/')) return { name: 'landing', slug: raw.replace('book/', '') };
   return { name: 'home' };
@@ -89,6 +100,17 @@ export default function App() {
     } catch { /* ignore */ }
     return DEFAULT_SITE_SETTINGS;
   });
+
+  const [articles, setArticles] = useState<Article[]>(() => {
+    try {
+      const stored = loadArticles();
+      if (stored.length) return stored;
+    } catch (e) {
+      console.warn('Local articles unavailable', e);
+    }
+    return [];
+  });
+  const publishedIdsRef = useRef<Set<string> | null>(null);
 
   const [route, setRoute] = useState<Route>({ name: 'home' });
 
@@ -152,6 +174,50 @@ export default function App() {
     })();
   }, []);
 
+  // ── Articles: first load + realtime sync across browsers ──
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cloudArticles = await fetchArticlesFromCloud();
+        if (cloudArticles.length) {
+          setArticles(cloudArticles);
+          saveArticles(cloudArticles);
+        }
+      } catch (error) {
+        console.error('Article bootstrap failed; using local cache:', error);
+      }
+    })();
+    const stop = startArticleSync((cloudArticles) => {
+      setArticles(cloudArticles);
+      saveArticles(cloudArticles);
+    });
+    return stop;
+  }, []);
+
+  // Track which articles were already published so we only email on NEW publishes
+  useEffect(() => {
+    if (!publishedIdsRef.current) {
+      publishedIdsRef.current = new Set(articles.filter(a => a.published).map(a => a.id));
+    }
+  }, [articles]);
+
+  const broadcastArticle = useCallback(async (article: Article) => {
+    try {
+      const subs = await fetchActiveSubscribers();
+      const active = subs.filter(s => s.status !== 'unsubscribed');
+      for (const sub of active) {
+        try {
+          await sendWeb3Form(articlePublishedTemplate(article, sub.email, siteSettingsRef.current));
+        } catch { /* continue with next subscriber */ }
+      }
+    } catch (e) {
+      console.error('Article broadcast failed:', e);
+    }
+  }, []);
+
+  const siteSettingsRef = useRef(siteSettings);
+  useEffect(() => { siteSettingsRef.current = siteSettings; }, [siteSettings]);
+
   // ── Routing ──
   useEffect(() => {
     const handleHash = () => setRoute(parseHash());
@@ -171,6 +237,18 @@ export default function App() {
     try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
     await saveSiteSettingsToCloud(updated);
   }, []);
+
+  const handleArticlesChange = useCallback((updated: Article[], notifyIds?: string[]) => {
+    setArticles(updated);
+    saveArticles(updated);
+    autoSyncArticles(updated).catch(() => {});
+    // Email every subscriber about newly published articles — cover included
+    const ids = notifyIds && notifyIds.length ? notifyIds : [];
+    for (const id of ids) {
+      const article = updated.find(a => a.id === id);
+      if (article && article.published) void broadcastArticle(article);
+    }
+  }, [broadcastArticle]);
 
   const handleUpdateBook = (updated: Book) => {
     handleBooksChange(books.map(b => (b.id === updated.id ? updated : b)));
@@ -246,8 +324,10 @@ export default function App() {
       return (
         <MegaAdmin
           books={books}
+          articles={articles}
           settings={siteSettings}
           onBooksChange={handleBooksChange}
+          onArticlesChange={handleArticlesChange}
           onSettingsChange={handleSettingsChange}
           onEditBook={book => setRoute({ name: 'book-admin', slug: book.slug })}
           onViewLanding={book => { window.location.hash = `/book/${book.slug}`; }}
@@ -285,6 +365,18 @@ export default function App() {
       );
     }
 
+    // Articles hub (news/blog listing)
+    if (route.name === 'articles') {
+      return <ArticlesHome articles={articles} settings={siteSettings} />;
+    }
+
+    // Single article page
+    if (route.name === 'article') {
+      const article = articles.find(a => a.slug === route.slug && a.published !== false);
+      if (!article) return <NotFound onBack={gotoHome} />;
+      return <ArticleView article={article} articles={articles} settings={siteSettings} />;
+    }
+
     // Home (single publishing-house website)
     if (!devPreview && !siteActive) {
       return (
@@ -305,7 +397,15 @@ export default function App() {
       );
     }
 
-    return <PublishingHome books={books} settings={siteSettings} />;
+    return <PublishingHome books={books} settings={siteSettings} onNavigate={(href) => {
+      if (href.startsWith('#')) {
+        const el = document.querySelector(href);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+        else window.location.hash = href;
+      } else {
+        window.location.hash = href;
+      }
+    }} />;
   };
 
   return <>{renderMain()}</>;

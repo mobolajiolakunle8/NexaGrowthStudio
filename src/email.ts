@@ -1,4 +1,4 @@
-import type { Book, Lead, SiteSettings } from './types';
+import type { Article, Book, Lead, SiteSettings } from './types';
 
 /**
  * Web3Forms — transactional email delivery
@@ -45,6 +45,10 @@ const money = (book: Book) =>
 /** Public landing page URL for a given book (used in the CTA). */
 export const bookLandingUrl = (book: Pick<Book, 'slug'>) =>
   `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}#/book/${book.slug}`;
+
+/** Public article URL (used in the CTA). */
+export const articleUrl = (article: Pick<Article, 'slug'>) =>
+  `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}#/article/${article.slug}`;
 
 /* ────────────────────────────────────────────────────────────────
    Base layout wrapper — premium, dark header, editorial typography
@@ -205,7 +209,9 @@ export async function sendWeb3Form(payload: EmailPayload): Promise<SendResult> {
       subject: payload.subject,
       from_name: payload.from_name,
       email: payload.reply_to || payload.to,
-      message: payload.html,
+      // Web3Forms renders the `html` field as a rich email. The `message`
+      // field is plain text and would expose raw HTML tags, so we omit it.
+      html: payload.html,
       botcheck: '',
     };
 
@@ -355,6 +361,188 @@ export function adminLeadTemplate(book: Book, lead: Lead, settings: SiteSettings
     from_name: `${settings.studioName} Notifications`,
     reply_to: lead.email,
   };
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Template: New-release announcement (with cover) — to one subscriber
+   ──────────────────────────────────────────────────────────────── */
+export function newReleaseTemplate(book: Book, subscriberEmail: string, settings: SiteSettings) {
+  const body = `
+    <p style="margin:0 0 16px;">A new book has just been published at <strong>${escapeHtml(settings.studioName)}</strong>.</p>
+    <p style="margin:0 0 18px;">You subscribed for release alerts — ${escapeHtml(book.title)} is now available. Tap below to open its page and download or order your copy.</p>
+  `;
+
+  return {
+    html: wrapEmail({
+      preheader: `New release: ${book.title} is now available.`,
+      kicker: 'New release alert',
+      heading: `Just published: ${book.title}`,
+      bodyHtml: body,
+      ctaLabel: 'Open the book page',
+      ctaHref: bookLandingUrl(book),
+      book,
+      settings,
+      footerNote: 'You are receiving this because you subscribed to release alerts. Reply to unsubscribe.',
+    }),
+    subject: `Just published: ${book.title}`,
+    to: settings.officialEmail,
+    cc: [subscriberEmail],
+    from_name: settings.studioName,
+    reply_to: subscriberEmail,
+  };
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Template: New article announcement — to one subscriber
+   ──────────────────────────────────────────────────────────────── */
+export function articlePublishedTemplate(article: Article, subscriberEmail: string, settings: SiteSettings) {
+  const hero = article.coverImage
+    ? `<tr><td style="padding:0 0 22px;">
+         <img src="${article.coverImage}" alt="${escapeHtml(article.title)}" width="548" style="display:block;width:100%;height:auto;border-radius:18px;" />
+       </td></tr>`
+    : '';
+
+  const gallery = (article.images || []).slice(0, 3).map(src =>
+    `<td style="padding:0 6px 0 0;"><img src="${src}" alt="" width="168" style="display:block;width:168px;height:112px;object-fit:cover;border-radius:12px;" /></td>`
+  ).join('');
+
+  const galleryBlock = gallery
+    ? `<tr><td style="padding:0 0 20px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${gallery}</tr></table></td></tr>`
+    : '';
+
+  const tags = (article.tags || []).map(t =>
+    `<span style="display:inline-block;background:${BRAND.clay};color:${BRAND.ink};font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:5px 12px;border-radius:999px;margin:0 6px 6px 0;">${escapeHtml(t)}</span>`
+  ).join('');
+
+  const body = `
+    <p style="margin:0 0 16px;">A brand-new article is live on <strong>${escapeHtml(settings.studioName)}</strong> — written for founders and curious minds like you.</p>
+    <p style="margin:0 0 8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:${BRAND.ochre};">${escapeHtml(article.category || 'Insights')}</p>
+    <p style="margin:0 0 16px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#2E2A25;">${escapeHtml(article.excerpt || '')}</p>
+    ${tags ? `<p style="margin:0 0 18px;">${tags}</p>` : ''}
+  `;
+
+  return {
+    html: wrapArticleEmail({
+      preheader: `New article: ${article.title}`,
+      kicker: 'Fresh from the studio',
+      heading: article.title,
+      bodyHtml: body,
+      heroHtml: hero,
+      galleryHtml: galleryBlock,
+      ctaLabel: 'Read the full article',
+      ctaHref: articleUrl(article),
+      settings,
+      footerNote: 'You are receiving this because you subscribed for updates. Reply to unsubscribe.',
+    }),
+    subject: `New article: ${article.title}`,
+    to: settings.officialEmail,
+    cc: [subscriberEmail],
+    from_name: settings.studioName,
+    reply_to: subscriberEmail,
+  };
+}
+
+function wrapArticleEmail(opts: {
+  preheader: string;
+  heading: string;
+  kicker: string;
+  bodyHtml: string;
+  heroHtml?: string;
+  galleryHtml?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  footerNote?: string;
+  settings: SiteSettings;
+}): string {
+  const { preheader, heading, kicker, bodyHtml, heroHtml, galleryHtml, ctaLabel, ctaHref, footerNote, settings } = opts;
+
+  const ctaBlock =
+    ctaLabel && ctaHref
+      ? `<tr><td style="padding:6px 0 0;">
+           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center">
+             <a href="${ctaHref}" style="display:inline-block;background:${BRAND.ochre};color:#0E1420;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;padding:15px 34px;border-radius:999px;">
+               ${escapeHtml(ctaLabel)}
+             </a>
+           </td></tr></table>
+         </td></tr>`
+      : '';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>${escapeHtml(heading)}</title>
+</head>
+<body style="margin:0;padding:0;background:${BRAND.paper};">
+<div style="display:none;font-size:1px;color:${BRAND.paper};max-height:0;overflow:hidden;">${escapeHtml(preheader)}</div>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${BRAND.paper};padding:32px 12px;">
+  <tr><td align="center">
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:620px;background:#FFFFFF;border-radius:26px;overflow:hidden;box-shadow:0 20px 48px -24px rgba(14,20,32,0.35);">
+
+      <tr>
+        <td style="background:${BRAND.ink};padding:30px 36px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+            <td style="vertical-align:middle;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td style="width:42px;">
+                  <div style="width:42px;height:42px;border-radius:14px;background:${BRAND.ochre};color:#0E1420;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:19px;font-weight:800;text-align:center;line-height:42px;">N</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0;font-family:'Space_Grotesk',Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;color:#FFFFFF;">${escapeHtml(settings.studioName)}</p>
+                  <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:${BRAND.ochre};">Articles &amp; Insights</p>
+                </td>
+              </tr></table>
+            </td>
+          </tr></table>
+        </td>
+      </tr>
+
+      <tr><td style="background:${BRAND.ochre};height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr>
+
+      <tr>
+        <td style="padding:38px 36px 12px;">
+          <p style="margin:0 0 10px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${BRAND.ochre};">${escapeHtml(kicker)}</p>
+          <h1 style="margin:0 0 22px;font-family:'Space_Grotesk',Helvetica,Arial,sans-serif;font-size:28px;line-height:1.18;font-weight:700;color:${BRAND.ink};">${escapeHtml(heading)}</h1>
+          ${heroHtml || ''}
+          <div style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.72;color:#2E2A25;">
+            ${bodyHtml}
+          </div>
+          ${galleryHtml || ''}
+          ${ctaBlock}
+        </td>
+      </tr>
+
+      <tr><td style="padding:14px 36px 0;"><div style="height:1px;background:#E7DFD2;">&nbsp;</div></td></tr>
+
+      <tr>
+        <td style="padding:18px 36px 34px;">
+          <p style="margin:0 0 2px;font-family:'Space_Grotesk',Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:${BRAND.ink};">${escapeHtml(settings.founderName)}</p>
+          <p style="margin:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:${BRAND.muted};">${escapeHtml(settings.founderRole)}</p>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="background:${BRAND.clay};padding:22px 36px;">
+          <p style="margin:0 0 6px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:${BRAND.muted};">${escapeHtml(settings.location)}</p>
+          <p style="margin:0 0 4px;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:${BRAND.muted};">
+            <a href="mailto:${escapeHtml(settings.officialEmail)}" style="color:${BRAND.muted};text-decoration:underline;">${escapeHtml(settings.officialEmail)}</a>
+            ${settings.contactWhatsapp ? ` &nbsp;·&nbsp; <a href="https://wa.me/${settings.contactWhatsapp.replace(/[^\d]/g, '')}" style="color:${BRAND.muted};text-decoration:underline;">WhatsApp</a>` : ''}
+          </p>
+          ${footerNote ? `<p style="margin:10px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:11px;line-height:1.6;color:${BRAND.muted};">${footerNote}</p>` : ''}
+          <p style="margin:12px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:11px;color:${BRAND.muted};">© ${new Date().getFullYear()} ${escapeHtml(settings.copyrightText)}</p>
+        </td>
+      </tr>
+
+    </table>
+
+  </td></tr>
+</table>
+</body>
+</html>`;
 }
 
 /* ────────────────────────────────────────────────────────────────
