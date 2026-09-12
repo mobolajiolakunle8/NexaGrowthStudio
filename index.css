@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: #090d15;
+}
+
+/* Public book pages inherit the same balanced dark theme as the homepage. */
+.book-site {
+  transition: background-color 0.45s ease, color 0.45s ease;
+}
+
+.book-site-dark {
+  background: #090d15 !important;
+  color: #f8f3ea !important;
+}
+
+.book-site-dark .book-site-header {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(9, 13, 21, 0.92) !important;
+}
+
+.book-site-dark #details,
+.book-site-dark footer {
+  background: #090d15 !important;
+}
+
+.book-site-dark #details .bg-white,
+.book-site-dark footer.bg-white,
+.book-site-dark [class*="bg-[#FAF7F2]"] {
+  background-color: #111824 !important;
+}
+
+.book-site-dark #details [class*="text-[#0E1420]"],
+.book-site-dark footer [class*="text-[#0E1420]"],
+.book-site-dark .book-site-header [class*="text-[#0E1420]"] {
+  color: #f8f3ea !important;
+}
+
+.book-site-dark #details [class*="border-[rgba(14,20,32"],
+.book-site-dark footer[class*="border-[rgba(14,20,32"],
+.book-site-dark .book-site-header[class*="border-[rgba(14,20,32"] {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.book-site-dark #details .bg-\[\#F2EBDD\] {
+  background-color: #151e2b !important;
+}
+
+.book-site-dark input,
+.book-site-dark textarea {
+  color: #0e1420;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Aurora background drift ─────────────────────────────── */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(4%, -3%) scale(1.06);
+  }
+  66% {
+    transform: translate(-3%, 4%) scale(0.97);
+  }
+}
+
+.animate-aurora {
+  animation: aurora-drift 22s ease-in-out infinite;
+}
+.animate-aurora-slow {
+  animation: aurora-drift 30s ease-in-out infinite reverse;
+}
+
+/* ── Marquee ─────────────────────────────────────────────── */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 34s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* ── Scroll reveal ───────────────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Gradient text shimmer ───────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+.animate-gradient-text {
+  background-size: 200% auto;
+  animation: shimmer 6s ease-in-out infinite;
+}
+
+/* ── Custom selection ────────────────────────────────────── */
+::selection {
+  background: #c8862a;
+  color: #090d15;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 11px;
+}
+::-webkit-scrollbar-track {
+  background: #090d15;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #c8862a, #6e3b1e);
+  border-radius: 8px;
+  border: 3px solid #090d15;
+}

@@ -1,0 +1,21 @@
+# 🔐 CRITICAL: Prevent secret leaks
+.env
+.env.local
+.env.*.local
+*.env
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+# Build folders
+dist/
+build/
+out/
+# Dependencies
+node_modules/
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.tsbuildinfo

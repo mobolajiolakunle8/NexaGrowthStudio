@@ -1,0 +1,11 @@
+# 🔐 Your Firebase credentials (NEVER commit this file)
+# Fill these from your Firebase Console
+
+VITE_FIREBASE_API_KEY=AIzaSyCQZpR0XjSVTfbR4kpsT-x9KPMyr9igjMU
+VITE_FIREBASE_AUTH_DOMAIN=nexa-growth-studio.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=nexa-growth-studio
+VITE_FIREBASE_STORAGE_BUCKET=nexa-growth-studio.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=1041308945872
+VITE_FIREBASE_APP_ID=1:1041308945872:web:9ed3b79b0df00cc857fdd5
+VITE_FIREBASE_MEASUREMENT_ID=G-1PPCHGHWH7
+VITE_FIREBASE_DATABASE_URL=nexa-growth-studio-default-rtdb.firebaseio.com
