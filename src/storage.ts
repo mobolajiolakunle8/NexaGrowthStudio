@@ -34,11 +34,6 @@ export function saveArticles(articles: Article[]) {
   try { localStorage.setItem(ARTICLES_STORAGE_KEY, JSON.stringify(articles)); } catch { /* */ }
 }
 
-export function estimateReadMinutes(paragraphs: string[]): number {
-  const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words / 200));
-}
-
 export function generateId() {
   return Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 }

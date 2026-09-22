@@ -8,15 +8,15 @@ import {
 } from '../cloud';
 import BrandLogo from './BrandLogo';
 import SubscriberManager from './SubscriberManager';
-import ArticleManager from './ArticleManager';
 import LeadDashboard from './LeadDashboard';
+import ArticleManager from './ArticleManager';
 
 interface Props {
   books: Book[];
   articles: Article[];
   settings: SiteSettings;
   onBooksChange: (books: Book[]) => void;
-  onArticlesChange: (articles: Article[], notifyIds?: string[]) => void;
+  onArticlesChange: (articles: Article[]) => void;
   onSettingsChange: (settings: SiteSettings) => Promise<void>;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
@@ -495,7 +495,7 @@ export default function MegaAdmin({
                   mainTab === 'articles' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                📰 Articles ({articles.filter(a => a.published !== false).length})
+                📰 Articles ({articles.length})
               </button>
               <button
                 onClick={() => setMainTab('frontpage')}
@@ -627,7 +627,7 @@ export default function MegaAdmin({
 
       {/* TAB: ARTICLES */}
       {mainTab === 'articles' && (
-        <ArticleManager articles={articles} onArticlesChange={onArticlesChange} />
+        <ArticleManager articles={articles} settings={settings} onArticlesChange={onArticlesChange} />
       )}
 
       {/* TAB 2: FRONTPAGE CMS */}
@@ -760,6 +760,15 @@ export default function MegaAdmin({
                   type="text"
                   value={siteDraft.navFounderLabel}
                   onChange={e => setSiteDraft(p => ({ ...p, navFounderLabel: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Navigation: Articles Button</label>
+                <input
+                  type="text"
+                  value={siteDraft.navArticlesLabel}
+                  onChange={e => setSiteDraft(p => ({ ...p, navArticlesLabel: e.target.value }))}
                   className={inputCls}
                 />
               </div>

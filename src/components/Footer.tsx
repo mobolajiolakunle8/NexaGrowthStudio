@@ -21,9 +21,6 @@ export default function Footer({ settings, dark }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <a href="#/articles" className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.13em] no-underline transition-colors hover:text-[#C8862A] ${dark ? 'text-white/55' : 'text-[#0E1420]/55'}`}>
-            Articles
-          </a>
           <a href={`https://wa.me/${settings.contactWhatsapp.replace(/[^\d]/g, '')}`} target="_blank" rel="noreferrer" className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.13em] no-underline transition-colors hover:text-[#C8862A] ${dark ? 'text-white/55' : 'text-[#0E1420]/55'}`}>
             WhatsApp
           </a>

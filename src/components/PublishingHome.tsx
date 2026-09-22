@@ -100,7 +100,7 @@ export default function PublishingHome({ books, settings }: Props) {
     [settings.navCatalogueLabel, '#catalogue', 'Catalogue'],
     [settings.navManifestoLabel, '#standard', 'Standard'],
     [settings.navFounderLabel, '#founder', 'Founder'],
-    ['Articles', '#/articles', 'Articles'],
+    [settings.navArticlesLabel, '#/articles', 'News'],
   ];
 
   const darkCls = dark ? 'bg-[#090D15] text-[#F8F3EA]' : 'bg-[#FAF7F2] text-[#0E1420]';
@@ -135,13 +135,15 @@ export default function PublishingHome({ books, settings }: Props) {
             </span>
           </a>
           <nav className="hidden items-center gap-8 md:flex">
-            {navLinks.map(([label, href]) => (
-              <a key={href} href={href} className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.14em] no-underline hover:text-[#C8862A] transition-colors ${mutedCls}`}>{label}</a>
+            {['Home', 'Catalogue', 'Standard', 'Founder'].map(item => (
+              <a key={item} href={`#${item.toLowerCase()}`} className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.14em] no-underline hover:text-[#C8862A] transition-colors ${mutedCls}`}>{item}</a>
             ))}
+            <a href="#/articles" className="inline-flex items-center gap-1.5 rounded-full bg-[#C8862A] px-4 py-1.5 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.14em] text-[#0E1420] no-underline transition-transform hover:-translate-y-0.5">
+              📰 {settings.navArticlesLabel}
+            </a>
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle dark={dark} onToggle={toggleTheme} compact />
-            <a href="#/articles" className="hidden rounded-full border border-[#C8862A]/50 px-4 py-2 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.13em] text-[#C8862A] no-underline transition-all hover:bg-[#C8862A] hover:text-[#0E1420] sm:inline-flex">📰 Articles</a>
             <a href="#catalogue" className="hidden rounded-full bg-[#C8862A] px-4 py-2 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.13em] text-[#0E1420] no-underline transition-transform hover:-translate-y-0.5 sm:inline-flex">Browse books</a>
           </div>
         </div>

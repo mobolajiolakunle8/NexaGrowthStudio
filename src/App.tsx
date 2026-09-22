@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { Article, Book, Lead, SiteSettings } from './types';
 import {
   MEGA_ADMIN_PASSCODE_KEY,
@@ -9,20 +9,18 @@ import {
   SUPER_ADMIN_DEFAULT,
 } from './types';
 
-import { loadArticles, loadBooks, saveArticles, saveBooks } from './storage';
+import { loadBooks, saveBooks } from './storage';
 import {
   autoSyncBooks,
-  autoSyncArticles,
-  fetchActiveSubscribers,
-  fetchArticlesFromCloud,
   saveSiteSettingsToCloud,
   bootstrapCloud,
   startLiveSync,
-  startArticleSync,
   stopLiveSync,
   testConnection,
+  startArticleSync,
+  loadArticlesLocal,
+  saveArticlesLocal,
 } from './cloud';
-import { articlePublishedTemplate, sendWeb3Form } from './email';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
@@ -101,17 +99,6 @@ export default function App() {
     return DEFAULT_SITE_SETTINGS;
   });
 
-  const [articles, setArticles] = useState<Article[]>(() => {
-    try {
-      const stored = loadArticles();
-      if (stored.length) return stored;
-    } catch (e) {
-      console.warn('Local articles unavailable', e);
-    }
-    return [];
-  });
-  const publishedIdsRef = useRef<Set<string> | null>(null);
-
   const [route, setRoute] = useState<Route>({ name: 'home' });
 
   const [megaCode, setMegaCode] = useState('');
@@ -133,9 +120,18 @@ export default function App() {
     }
   });
 
+  const [articles, setArticles] = useState<Article[]>(() => {
+    try {
+      return loadArticlesLocal();
+    } catch {
+      return [];
+    }
+  });
+
   // ── Realtime sync (catalog, leads, settings) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let unsubscribeArticles: (() => void) | null = null;
     try {
       unsubscribe = startLiveSync((cloudBooks: Book[], _leads: Lead[], cloudSettings: SiteSettings) => {
         if (Array.isArray(cloudBooks)) {
@@ -147,6 +143,12 @@ export default function App() {
           try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(cloudSettings)); } catch { /* ignore */ }
         }
       });
+      unsubscribeArticles = startArticleSync((cloudArticles: Article[]) => {
+        if (Array.isArray(cloudArticles)) {
+          setArticles(cloudArticles);
+          saveArticlesLocal(cloudArticles);
+        }
+      });
     } catch (err) {
       console.warn('Realtime sync unavailable:', err);
     }
@@ -155,6 +157,7 @@ export default function App() {
 
     return () => {
       if (unsubscribe) unsubscribe();
+      if (unsubscribeArticles) unsubscribeArticles();
       stopLiveSync();
     };
   }, []);
@@ -173,50 +176,6 @@ export default function App() {
       }
     })();
   }, []);
-
-  // ── Articles: first load + realtime sync across browsers ──
-  useEffect(() => {
-    void (async () => {
-      try {
-        const cloudArticles = await fetchArticlesFromCloud();
-        if (cloudArticles.length) {
-          setArticles(cloudArticles);
-          saveArticles(cloudArticles);
-        }
-      } catch (error) {
-        console.error('Article bootstrap failed; using local cache:', error);
-      }
-    })();
-    const stop = startArticleSync((cloudArticles) => {
-      setArticles(cloudArticles);
-      saveArticles(cloudArticles);
-    });
-    return stop;
-  }, []);
-
-  // Track which articles were already published so we only email on NEW publishes
-  useEffect(() => {
-    if (!publishedIdsRef.current) {
-      publishedIdsRef.current = new Set(articles.filter(a => a.published).map(a => a.id));
-    }
-  }, [articles]);
-
-  const broadcastArticle = useCallback(async (article: Article) => {
-    try {
-      const subs = await fetchActiveSubscribers();
-      const active = subs.filter(s => s.status !== 'unsubscribed');
-      for (const sub of active) {
-        try {
-          await sendWeb3Form(articlePublishedTemplate(article, sub.email, siteSettingsRef.current));
-        } catch { /* continue with next subscriber */ }
-      }
-    } catch (e) {
-      console.error('Article broadcast failed:', e);
-    }
-  }, []);
-
-  const siteSettingsRef = useRef(siteSettings);
-  useEffect(() => { siteSettingsRef.current = siteSettings; }, [siteSettings]);
 
   // ── Routing ──
   useEffect(() => {
@@ -238,17 +197,10 @@ export default function App() {
     await saveSiteSettingsToCloud(updated);
   }, []);
 
-  const handleArticlesChange = useCallback((updated: Article[], notifyIds?: string[]) => {
+  const handleArticlesChange = useCallback((updated: Article[]) => {
     setArticles(updated);
-    saveArticles(updated);
-    autoSyncArticles(updated).catch(() => {});
-    // Email every subscriber about newly published articles — cover included
-    const ids = notifyIds && notifyIds.length ? notifyIds : [];
-    for (const id of ids) {
-      const article = updated.find(a => a.id === id);
-      if (article && article.published) void broadcastArticle(article);
-    }
-  }, [broadcastArticle]);
+    saveArticlesLocal(updated);
+  }, []);
 
   const handleUpdateBook = (updated: Book) => {
     handleBooksChange(books.map(b => (b.id === updated.id ? updated : b)));
@@ -365,16 +317,40 @@ export default function App() {
       );
     }
 
-    // Articles hub (news/blog listing)
+    // Articles news hub
     if (route.name === 'articles') {
+      if (!devPreview && !siteActive) {
+        return (
+          <DeveloperScreen
+            siteName={siteSettings.studioName}
+            notice="This website is temporarily unavailable. Please check back soon."
+            onExit={gotoHome}
+          />
+        );
+      }
+      if (!devPreview && siteDev) {
+        return (
+          <DeveloperScreen
+            siteName={siteSettings.studioName}
+            notice={siteSettings.developerNotice || DEFAULT_SITE_SETTINGS.developerNotice!}
+            onExit={gotoHome}
+          />
+        );
+      }
       return <ArticlesHome articles={articles} settings={siteSettings} />;
     }
 
-    // Single article page
+    // Individual article reader
     if (route.name === 'article') {
       const article = articles.find(a => a.slug === route.slug && a.published !== false);
       if (!article) return <NotFound onBack={gotoHome} />;
-      return <ArticleView article={article} articles={articles} settings={siteSettings} />;
+      return (
+        <ArticleView
+          article={article}
+          articles={articles}
+          settings={siteSettings}
+        />
+      );
     }
 
     // Home (single publishing-house website)
