@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Article, Book, Lead, SiteSettings } from './types';
+import type { Book, Lead, SiteSettings } from './types';
 import {
   MEGA_ADMIN_PASSCODE_KEY,
   MEGA_ADMIN_DEFAULT,
@@ -17,23 +17,16 @@ import {
   startLiveSync,
   stopLiveSync,
   testConnection,
-  startArticleSync,
-  loadArticlesLocal,
-  saveArticlesLocal,
 } from './cloud';
 import MegaAdmin from './components/MegaAdmin';
 import BookAdmin from './components/BookAdmin';
 import BookLanding from './components/BookLanding';
 import PublishingHome from './components/PublishingHome';
-import ArticlesHome from './components/ArticlesHome';
-import ArticleView from './components/ArticleView';
 import DeveloperScreen from './components/DeveloperScreen';
 import SuperAdmin from './components/SuperAdmin';
 
 type Route =
   | { name: 'home' }
-  | { name: 'articles' }
-  | { name: 'article'; slug: string }
   | { name: 'landing'; slug: string }
   | { name: 'book-admin'; slug: string }
   | { name: 'mega-admin' }
@@ -43,8 +36,6 @@ function parseHash(): Route {
   const raw = window.location.hash.toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
   if (raw === 'admin' || raw === 'admin/login') return { name: 'mega-admin' };
   if (raw === 'super' || raw.startsWith('super/')) return { name: 'super-admin' };
-  if (raw === 'articles') return { name: 'articles' };
-  if (raw.startsWith('article/')) return { name: 'article', slug: raw.replace('article/', '') };
   if (raw.startsWith('admin/book/')) return { name: 'book-admin', slug: raw.replace('admin/book/', '') };
   if (raw.startsWith('book/')) return { name: 'landing', slug: raw.replace('book/', '') };
   return { name: 'home' };
@@ -120,18 +111,9 @@ export default function App() {
     }
   });
 
-  const [articles, setArticles] = useState<Article[]>(() => {
-    try {
-      return loadArticlesLocal();
-    } catch {
-      return [];
-    }
-  });
-
   // ── Realtime sync (catalog, leads, settings) ──
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
-    let unsubscribeArticles: (() => void) | null = null;
     try {
       unsubscribe = startLiveSync((cloudBooks: Book[], _leads: Lead[], cloudSettings: SiteSettings) => {
         if (Array.isArray(cloudBooks)) {
@@ -143,12 +125,6 @@ export default function App() {
           try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(cloudSettings)); } catch { /* ignore */ }
         }
       });
-      unsubscribeArticles = startArticleSync((cloudArticles: Article[]) => {
-        if (Array.isArray(cloudArticles)) {
-          setArticles(cloudArticles);
-          saveArticlesLocal(cloudArticles);
-        }
-      });
     } catch (err) {
       console.warn('Realtime sync unavailable:', err);
     }
@@ -157,7 +133,6 @@ export default function App() {
 
     return () => {
       if (unsubscribe) unsubscribe();
-      if (unsubscribeArticles) unsubscribeArticles();
       stopLiveSync();
     };
   }, []);
@@ -195,11 +170,6 @@ export default function App() {
     setSiteSettings(updated);
     try { localStorage.setItem(SITE_SETTINGS_STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
     await saveSiteSettingsToCloud(updated);
-  }, []);
-
-  const handleArticlesChange = useCallback((updated: Article[]) => {
-    setArticles(updated);
-    saveArticlesLocal(updated);
   }, []);
 
   const handleUpdateBook = (updated: Book) => {
@@ -276,10 +246,8 @@ export default function App() {
       return (
         <MegaAdmin
           books={books}
-          articles={articles}
           settings={siteSettings}
           onBooksChange={handleBooksChange}
-          onArticlesChange={handleArticlesChange}
           onSettingsChange={handleSettingsChange}
           onEditBook={book => setRoute({ name: 'book-admin', slug: book.slug })}
           onViewLanding={book => { window.location.hash = `/book/${book.slug}`; }}
@@ -313,42 +281,6 @@ export default function App() {
           book={book}
           settings={siteSettings}
           onAdminAccess={() => setRoute({ name: 'book-admin', slug: book.slug })}
-        />
-      );
-    }
-
-    // Articles news hub
-    if (route.name === 'articles') {
-      if (!devPreview && !siteActive) {
-        return (
-          <DeveloperScreen
-            siteName={siteSettings.studioName}
-            notice="This website is temporarily unavailable. Please check back soon."
-            onExit={gotoHome}
-          />
-        );
-      }
-      if (!devPreview && siteDev) {
-        return (
-          <DeveloperScreen
-            siteName={siteSettings.studioName}
-            notice={siteSettings.developerNotice || DEFAULT_SITE_SETTINGS.developerNotice!}
-            onExit={gotoHome}
-          />
-        );
-      }
-      return <ArticlesHome articles={articles} settings={siteSettings} />;
-    }
-
-    // Individual article reader
-    if (route.name === 'article') {
-      const article = articles.find(a => a.slug === route.slug && a.published !== false);
-      if (!article) return <NotFound onBack={gotoHome} />;
-      return (
-        <ArticleView
-          article={article}
-          articles={articles}
-          settings={siteSettings}
         />
       );
     }

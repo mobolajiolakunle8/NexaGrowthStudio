@@ -69,7 +69,6 @@ export interface SiteSettings {
   navCatalogueLabel: string;
   navManifestoLabel: string;
   navFounderLabel: string;
-  navArticlesLabel: string;
   heroKicker: string;
   heroTitle: string;
   heroSubtitle: string;
@@ -133,38 +132,40 @@ export interface Subscriber {
   status: 'active' | 'unsubscribed';
 }
 
-export interface ArticleReply {
-  id: string;
-  name: string;
-  message: string;
-  date: string;
-}
-
-export interface ArticleComment {
-  id: string;
-  name: string;
-  message: string;
-  date: string;
-  likes: string[];
-  replies: ArticleReply[];
-}
-
 export interface Article {
   id: string;
   slug: string;
   title: string;
   excerpt: string;
+  /** Body content — paragraphs separated by blank lines. `[[image:N]]` embeds images[N] inline. */
+  content: string;
   category: string;
   tags: string[];
-  body: string;
-  coverImage?: string;
+  author: string;
+  coverImage: string;
+  /** Supporting inline images (local uploads, compressed). */
   images: string[];
-  likes: string[];
-  comments: ArticleComment[];
+  likes: number;
   published: boolean;
-  featured?: boolean;
+  allowComments: boolean;
   createdAt: string;
   updatedAt: string;
+  publishedAt?: string;
+  notifiedSubscribers?: boolean;
+}
+
+export interface ArticleComment {
+  id: string;
+  articleId: string;
+  /** null for a top-level comment, otherwise the parent comment id */
+  parentId: string | null;
+  name: string;
+  /** optional — kept private, used for follow-ups */
+  email?: string;
+  message: string;
+  likes: number;
+  isPublisher?: boolean;
+  date: string;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -176,7 +177,6 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   navCatalogueLabel: 'Business Library',
   navManifestoLabel: 'Standard',
   navFounderLabel: 'Behind Nexa',
-  navArticlesLabel: 'Articles',
   heroKicker: 'Ibadan · Nigeria · Est. 2024',
   heroTitle: 'Books that teach business properly.',
   heroSubtitle: 'We publish practical, field-tested guides for African founders and small-business owners. No theory for theory’s sake — just clear, actionable books you can apply the same week you read them.',

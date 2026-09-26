@@ -16,6 +16,7 @@ import {
   Star,
   HelpCircle,
   ChevronRight,
+  Newspaper,
 } from 'lucide-react';
 
 interface Props {
@@ -97,10 +98,10 @@ export default function PublishingHome({ books, settings }: Props) {
   }
 
   const navLinks: Array<[string, string, string]> = [
-    [settings.navCatalogueLabel, '#catalogue', 'Catalogue'],
-    [settings.navManifestoLabel, '#standard', 'Standard'],
-    [settings.navFounderLabel, '#founder', 'Founder'],
-    [settings.navArticlesLabel, '#/articles', 'News'],
+    [settings.navCatalogueLabel, '#catalogue', '📚'],
+    [settings.navManifestoLabel, '#standard', '🏛️'],
+    [settings.navFounderLabel, '#founder', '👤'],
+    ['Articles', '#/articles', '📰'],
   ];
 
   const darkCls = dark ? 'bg-[#090D15] text-[#F8F3EA]' : 'bg-[#FAF7F2] text-[#0E1420]';
@@ -138,8 +139,8 @@ export default function PublishingHome({ books, settings }: Props) {
             {['Home', 'Catalogue', 'Standard', 'Founder'].map(item => (
               <a key={item} href={`#${item.toLowerCase()}`} className={`font-[JetBrains_Mono] text-[10px] font-semibold uppercase tracking-[0.14em] no-underline hover:text-[#C8862A] transition-colors ${mutedCls}`}>{item}</a>
             ))}
-            <a href="#/articles" className="inline-flex items-center gap-1.5 rounded-full bg-[#C8862A] px-4 py-1.5 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.14em] text-[#0E1420] no-underline transition-transform hover:-translate-y-0.5">
-              📰 {settings.navArticlesLabel}
+            <a href="#/articles" className="inline-flex items-center gap-1.5 rounded-full bg-[#A8452F] px-3.5 py-1.5 font-[JetBrains_Mono] text-[10px] font-bold uppercase tracking-[0.14em] text-white no-underline transition-transform hover:-translate-y-0.5">
+              <Newspaper size={12} /> Articles
             </a>
           </nav>
           <div className="flex items-center gap-2">
@@ -181,6 +182,10 @@ export default function PublishingHome({ books, settings }: Props) {
                 }}
               >
                 {settings.heroSecondaryCta}
+              </a>
+              <a href="#/articles" className="group inline-flex items-center gap-2 rounded-full bg-[#A8452F] px-7 py-3.5 font-[JetBrains_Mono] text-[10.5px] font-bold uppercase tracking-[0.14em] text-white no-underline transition-all hover:-translate-y-0.5 hover:shadow-xl hover:bg-[#93354A]">
+                <Newspaper size={14} /> Read Articles
+                <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
               </a>
             </div>
             <div className={`mt-12 grid max-w-md grid-cols-3 border-t pt-6 ${dark ? 'border-white/10' : 'border-[#0E1420]/10'}`}>

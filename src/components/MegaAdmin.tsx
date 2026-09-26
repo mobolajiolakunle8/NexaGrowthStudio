@@ -4,22 +4,22 @@ import { MEGA_ADMIN_PASSCODE_KEY } from '../types';
 import { generateId, slugify, saveBooks, loadLeads } from '../storage';
 import {
   getEffectiveDbUrl,
-  testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync
+  testConnection, pullFromCloud, pushToCloudUrl, readLocal, writeLocal, getLastSync,
+  deleteArticleInCloud,
 } from '../cloud';
 import BrandLogo from './BrandLogo';
 import SubscriberManager from './SubscriberManager';
 import LeadDashboard from './LeadDashboard';
-import ArticleManager from './ArticleManager';
 
 interface Props {
   books: Book[];
-  articles: Article[];
   settings: SiteSettings;
+  articles: Article[];
   onBooksChange: (books: Book[]) => void;
-  onArticlesChange: (articles: Article[]) => void;
   onSettingsChange: (settings: SiteSettings) => Promise<void>;
   onEditBook: (book: Book) => void;
   onViewLanding: (book: Book) => void;
+  onEditArticle: (article: Article | null) => void;
   megaPasscode: string;
   onMegaPasscodeChanged: (next: string) => void;
 }
@@ -71,17 +71,19 @@ const EMPTY_PAID_BOOK = (): Partial<Book> => ({
 
 export default function MegaAdmin({
   books,
-  articles,
   settings,
+  articles,
   onBooksChange,
-  onArticlesChange,
   onSettingsChange,
   onEditBook,
   onViewLanding,
+  onEditArticle,
   megaPasscode,
   onMegaPasscodeChanged,
 }: Props) {
   const [mainTab, setMainTab] = useState<'books' | 'articles' | 'frontpage' | 'subscribers' | 'settings'>('books');
+  const [articleSearch, setArticleSearch] = useState('');
+  const [articleDeleteConfirm, setArticleDeleteConfirm] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [bookType, setBookType] = useState<'free' | 'paid'>('free');
   const [draft, setDraft] = useState<Partial<Book>>(EMPTY_FREE_BOOK());
@@ -194,6 +196,34 @@ export default function MegaAdmin({
     onBooksChange(updated);
     saveBooks(updated);
     setDeleteConfirm(null);
+  };
+
+  const filteredArticles = articles.filter(a =>
+    a.title.toLowerCase().includes(articleSearch.toLowerCase()) ||
+    (a.category || '').toLowerCase().includes(articleSearch.toLowerCase())
+  );
+
+  const handleDeleteArticle = async (id: string) => {
+    if (!confirm('Delete this article and all its comments? This cannot be undone.')) return;
+    try {
+      await deleteArticleInCloud(id);
+    } catch {
+      alert('Delete failed. Please try again.');
+    }
+    setArticleDeleteConfirm(null);
+  };
+
+  const handleToggleArticlePublish = async (article: Article) => {
+    try {
+      const { saveArticleToCloud } = await import('../cloud');
+      await saveArticleToCloud({
+        ...article,
+        published: !article.published,
+        publishedAt: !article.published ? (article.publishedAt || new Date().toISOString()) : article.publishedAt,
+      });
+    } catch {
+      alert('Could not update publish state. Please try again.');
+    }
   };
 
   const handleTogglePublish = (id: string) => {
@@ -495,7 +525,7 @@ export default function MegaAdmin({
                   mainTab === 'articles' ? 'bg-[#C8862A] text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                📰 Articles ({articles.length})
+                📰 Articles ({articles.filter(a => a.published !== false).length})
               </button>
               <button
                 onClick={() => setMainTab('frontpage')}
@@ -623,11 +653,6 @@ export default function MegaAdmin({
             </div>
           )}
         </div>
-      )}
-
-      {/* TAB: ARTICLES */}
-      {mainTab === 'articles' && (
-        <ArticleManager articles={articles} settings={settings} onArticlesChange={onArticlesChange} />
       )}
 
       {/* TAB 2: FRONTPAGE CMS */}
@@ -760,15 +785,6 @@ export default function MegaAdmin({
                   type="text"
                   value={siteDraft.navFounderLabel}
                   onChange={e => setSiteDraft(p => ({ ...p, navFounderLabel: e.target.value }))}
-                  className={inputCls}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-[10px] uppercase tracking-wider text-slate-400 block mb-1 font-mono">Navigation: Articles Button</label>
-                <input
-                  type="text"
-                  value={siteDraft.navArticlesLabel}
-                  onChange={e => setSiteDraft(p => ({ ...p, navArticlesLabel: e.target.value }))}
                   className={inputCls}
                 />
               </div>

@@ -13,6 +13,20 @@
             ".validate": "newData.hasChildren(['id', 'bookId', 'name', 'email', 'phone', 'date', 'status']) || !newData.exists()"
           }
         },
+        "articles": {
+          ".read": true,
+          "$articleId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['id', 'slug', 'title', 'content']) || !newData.exists()"
+          }
+        },
+        "articleComments": {
+          ".read": true,
+          "$commentId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['id', 'articleId', 'name', 'message', 'date']) || !newData.exists()"
+          }
+        },
         "$other": {
           ".read": true,
           ".write": true

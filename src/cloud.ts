@@ -10,9 +10,8 @@ import {
   update,
 } from 'firebase/database';
 import { getDownloadURL, getStorage, ref as storageRef, uploadBytes } from 'firebase/storage';
-import type { Article, ArticleComment, ArticleReply, Book, Lead, SiteSettings, Subscriber } from './types';
+import type { Article, ArticleComment, Book, Lead, SiteSettings, Subscriber } from './types';
 import {
-  ARTICLES_STORAGE_KEY,
   BOOKS_STORAGE_KEY,
   LEADS_STORAGE_KEY,
   SITE_SETTINGS_STORAGE_KEY,
@@ -267,125 +266,6 @@ export function startSubscriberSync(callback: (subs: Subscriber[]) => void) {
   }, error => console.error('Subscriber sync failed:', error));
 }
 
-// ─── Articles ────────────────────────────────────────────────────
-const articlesRef = ref(db, 'nexa/v2/articles');
-
-const isReply = (value: unknown): value is ArticleReply => {
-  const r = value as Partial<ArticleReply> | null;
-  return !!r && typeof r.id === 'string' && typeof r.name === 'string' && typeof r.message === 'string';
-};
-
-const isComment = (value: unknown): value is ArticleComment => {
-  const c = value as Partial<ArticleComment> | null;
-  return !!c && typeof c.id === 'string' && typeof c.name === 'string' && typeof c.message === 'string';
-};
-
-const isArticle = (value: unknown): value is Article => {
-  const a = value as Partial<Article> | null;
-  return !!a && typeof a.id === 'string' && typeof a.slug === 'string' && typeof a.title === 'string';
-};
-
-const normalizeArticle = (value: unknown): Article | null => {
-  if (!isArticle(value)) return null;
-  const a = value as Partial<Article>;
-  return {
-    id: a.id!,
-    slug: a.slug!,
-    title: a.title!,
-    excerpt: typeof a.excerpt === 'string' ? a.excerpt : '',
-    category: typeof a.category === 'string' && a.category ? a.category : 'General',
-    tags: Array.isArray(a.tags) ? a.tags.filter(t => typeof t === 'string') : [],
-    body: typeof a.body === 'string' ? a.body : '',
-    coverImage: typeof a.coverImage === 'string' ? a.coverImage : undefined,
-    images: Array.isArray(a.images) ? a.images.filter(i => typeof i === 'string') : [],
-    likes: Array.isArray(a.likes) ? a.likes.filter(l => typeof l === 'string') : [],
-    comments: Array.isArray(a.comments)
-      ? a.comments.filter(isComment).map(c => ({
-          ...c,
-          likes: Array.isArray(c.likes) ? c.likes.filter(l => typeof l === 'string') : [],
-          replies: Array.isArray(c.replies) ? c.replies.filter(isReply) : [],
-        }))
-      : [],
-    published: a.published !== false,
-    featured: a.featured === true,
-    createdAt: typeof a.createdAt === 'string' ? a.createdAt : new Date().toISOString(),
-    updatedAt: typeof a.updatedAt === 'string' ? a.updatedAt : new Date().toISOString(),
-  };
-};
-
-const decodeArticles = (value: unknown): Article[] =>
-  values<unknown>(value)
-    .map(normalizeArticle)
-    .filter((a): a is Article => a !== null)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-export function loadArticlesLocal(): Article[] {
-  try {
-    const raw = localStorage.getItem(ARTICLES_STORAGE_KEY);
-    if (!raw) return [];
-    return decodeArticles(JSON.parse(raw));
-  } catch { return []; }
-}
-
-export function saveArticlesLocal(articles: Article[]) {
-  try { localStorage.setItem(ARTICLES_STORAGE_KEY, JSON.stringify(articles)); } catch { /* ignore */ }
-}
-
-export function startArticleSync(callback: (articles: Article[]) => void) {
-  return onValue(articlesRef, snapshot => {
-    const articles = decodeArticles(snapshot.exists() ? snapshot.val() : []);
-    saveArticlesLocal(articles);
-    callback(articles);
-  }, error => console.error('Article sync failed:', error));
-}
-
-/** Publisher creates or updates a full article. */
-export async function saveArticleToCloud(article: Article) {
-  const payload = { ...normalizeArticle(article)!, updatedAt: new Date().toISOString() };
-  await set(ref(db, `nexa/v2/articles/${article.id}`), JSON.parse(JSON.stringify(payload)));
-  return payload;
-}
-
-export async function deleteArticleInCloud(id: string) {
-  await remove(ref(db, `nexa/v2/articles/${id}`));
-}
-
-/** Toggle a like on an article (one per anonymous visitor id). Safe under concurrency. */
-export async function toggleArticleLike(articleId: string, visitorId: string): Promise<string[]> {
-  const likesRef = ref(db, `nexa/v2/articles/${articleId}/likes`);
-  const result = await runTransaction(likesRef, (current: unknown) => {
-    const list = Array.isArray(current) ? current.filter((l): l is string => typeof l === 'string') : [];
-    return list.includes(visitorId) ? list.filter(l => l !== visitorId) : [...list, visitorId];
-  }, { applyLocally: false });
-  return Array.isArray(result.snapshot.val()) ? (result.snapshot.val() as string[]) : [];
-}
-
-/** Append a top-level comment. */
-export async function addArticleComment(articleId: string, comment: ArticleComment) {
-  await set(
-    ref(db, `nexa/v2/articles/${articleId}/comments/${comment.id}`),
-    JSON.parse(JSON.stringify({ ...comment, likes: comment.likes || [], replies: comment.replies || [] }))
-  );
-}
-
-/** Append a reply to a comment. */
-export async function addArticleReply(articleId: string, commentId: string, reply: ArticleReply) {
-  await set(
-    ref(db, `nexa/v2/articles/${articleId}/comments/${commentId}/replies/${reply.id}`),
-    JSON.parse(JSON.stringify(reply))
-  );
-}
-
-/** Toggle a like on a comment. */
-export async function toggleCommentLike(articleId: string, commentId: string, visitorId: string): Promise<string[]> {
-  const likesRef = ref(db, `nexa/v2/articles/${articleId}/comments/${commentId}/likes`);
-  const result = await runTransaction(likesRef, (current: unknown) => {
-    const list = Array.isArray(current) ? current.filter((l): l is string => typeof l === 'string') : [];
-    return list.includes(visitorId) ? list.filter(l => l !== visitorId) : [...list, visitorId];
-  }, { applyLocally: false });
-  return Array.isArray(result.snapshot.val()) ? (result.snapshot.val() as string[]) : [];
-}
-
 export async function uploadBookAsset(bookId: string, kind: 'cover' | 'pdf' | 'founder', file: Blob, filename: string) {
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '-');
   const target = storageRef(storage, `site-assets/${bookId}/${kind}/${Date.now()}-${safeName}`);
@@ -457,3 +337,78 @@ export const setDbUrl = (_url: string) => undefined;
 export const isSyncEnabled = () => true;
 export const setSyncEnabled = (_enabled: boolean) => undefined;
 export const getLastSync = () => localStorage.getItem('nexa_cloud_last_sync');
+
+/* ── Articles (news / blog) ────────────────────────────────── */
+
+const articlesRef = ref(db, 'nexa/v2/articles');
+const articleCommentsRef = ref(db, 'nexa/v2/articleComments');
+
+const isArticle = (value: unknown): value is Article => {
+  const a = value as Partial<Article> | null;
+  return !!a && typeof a.id === 'string' && typeof a.slug === 'string' && typeof a.title === 'string';
+};
+
+const isArticleComment = (value: unknown): value is ArticleComment => {
+  const c = value as Partial<ArticleComment> | null;
+  return !!c && typeof c.id === 'string' && typeof c.articleId === 'string' && typeof c.message === 'string';
+};
+
+const decodeArticles = (value: unknown): Article[] =>
+  values<unknown>(value).filter(isArticle).sort((a, b) =>
+    new Date(b.publishedAt || b.updatedAt || b.createdAt).getTime() -
+    new Date(a.publishedAt || a.updatedAt || a.createdAt).getTime()
+  );
+
+const decodeArticleComments = (value: unknown): ArticleComment[] =>
+  values<unknown>(value).filter(isArticleComment).sort((a, b) =>
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+export function startArticleSync(callback: (articles: Article[]) => void) {
+  return onValue(articlesRef, snapshot => {
+    callback(decodeArticles(snapshot.exists() ? snapshot.val() : []));
+  }, error => console.error('Article sync failed:', error));
+}
+
+export async function saveArticleToCloud(article: Article) {
+  await set(
+    ref(db, `nexa/v2/articles/${article.id}`),
+    JSON.parse(JSON.stringify({ ...article, updatedAt: new Date().toISOString() }))
+  );
+  return true;
+}
+
+export async function deleteArticleInCloud(id: string) {
+  await remove(ref(db, `nexa/v2/articles/${id}`));
+}
+
+/** Atomically bump an article's like count (safe across browsers). */
+export async function toggleArticleLike(articleId: string, delta: 1 | -1) {
+  await runTransaction(ref(db, `nexa/v2/articles/${articleId}/likes`), (current: unknown) => {
+    const n = typeof current === 'number' ? current : 0;
+    return Math.max(0, n + delta);
+  });
+}
+
+export function startArticleCommentSync(callback: (comments: ArticleComment[]) => void) {
+  return onValue(articleCommentsRef, snapshot => {
+    callback(decodeArticleComments(snapshot.exists() ? snapshot.val() : []));
+  }, error => console.error('Comment sync failed:', error));
+}
+
+export async function createArticleCommentInCloud(comment: ArticleComment) {
+  await set(ref(db, `nexa/v2/articleComments/${comment.id}`), JSON.parse(JSON.stringify(comment)));
+  return comment;
+}
+
+export async function deleteArticleCommentInCloud(id: string) {
+  await remove(ref(db, `nexa/v2/articleComments/${id}`));
+}
+
+/** Atomically bump a comment's like count (safe across browsers). */
+export async function toggleArticleCommentLike(commentId: string, delta: 1 | -1) {
+  await runTransaction(ref(db, `nexa/v2/articleComments/${commentId}/likes`), (current: unknown) => {
+    const n = typeof current === 'number' ? current : 0;
+    return Math.max(0, n + delta);
+  });
+}

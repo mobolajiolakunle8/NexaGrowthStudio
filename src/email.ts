@@ -46,6 +46,10 @@ const money = (book: Book) =>
 export const bookLandingUrl = (book: Pick<Book, 'slug'>) =>
   `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}#/book/${book.slug}`;
 
+/** Public reader URL for a given article. */
+export const articleUrl = (article: Pick<Article, 'slug'>) =>
+  `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}#/article/${article.slug}`;
+
 /* ────────────────────────────────────────────────────────────────
    Base layout wrapper — premium, dark header, editorial typography
    ──────────────────────────────────────────────────────────────── */
@@ -389,44 +393,6 @@ export function newReleaseTemplate(book: Book, subscriberEmail: string, settings
 }
 
 /* ────────────────────────────────────────────────────────────────
-   Template: New-article announcement (with cover image) — to one subscriber
-   ──────────────────────────────────────────────────────────────── */
-export const articleUrl = (article: Pick<Article, 'slug'>) =>
-  `${typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}#/article/${article.slug}`;
-
-export function newArticleTemplate(article: Article, subscriberEmail: string, settings: SiteSettings) {
-  const heroImg = article.coverImage
-    ? `<div style="margin:0 0 18px;"><img src="${article.coverImage}" alt="${escapeHtml(article.title)}" width="100%" style="display:block;width:100%;height:auto;border-radius:16px;" /></div>`
-    : '';
-
-  const body = `
-    <p style="margin:0 0 16px;">A new article has just been published on <strong>${escapeHtml(settings.studioName)}</strong>.</p>
-    ${heroImg}
-    <p style="margin:0 0 6px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:${BRAND.ochre};">${escapeHtml(article.category)}${article.tags.length ? ` · ${article.tags.map(t => escapeHtml(t)).join(' · ')}` : ''}</p>
-    <p style="margin:0 0 16px;">${escapeHtml(article.excerpt || article.title)}</p>
-    <p style="margin:0 0 18px;color:#3A3835;">Tap below to read the full story, like it, and join the discussion.</p>
-  `;
-
-  return {
-    html: wrapEmail({
-      preheader: `New article: ${article.title}`,
-      kicker: 'Fresh from the newsroom',
-      heading: article.title,
-      bodyHtml: body,
-      ctaLabel: 'Read the article',
-      ctaHref: articleUrl(article),
-      settings,
-      footerNote: 'You are receiving this because you subscribed to updates. Reply to unsubscribe.',
-    }),
-    subject: `New article: ${article.title}`,
-    to: settings.officialEmail,
-    cc: [subscriberEmail],
-    from_name: settings.studioName,
-    reply_to: subscriberEmail,
-  };
-}
-
-/* ────────────────────────────────────────────────────────────────
    Template: Welcome / enquiry acknowledgement
    ──────────────────────────────────────────────────────────────── */
 export function enquiryAcknowledgementTemplate(book: Book, lead: Lead, settings: SiteSettings) {
@@ -453,5 +419,36 @@ export function enquiryAcknowledgementTemplate(book: Book, lead: Lead, settings:
     cc: [lead.email],
     from_name: settings.studioName,
     reply_to: lead.email,
+  };
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Template: New-article announcement (with hero image) — to one subscriber
+   ──────────────────────────────────────────────────────────────── */
+export function newArticleTemplate(article: Article, subscriberEmail: string, settings: SiteSettings) {
+  const href = articleUrl(article);
+  const body = `
+    ${article.images[0] ? `<p style="margin:0 0 20px;"><img src="${article.images[0]}" alt="${escapeHtml(article.title)}" width="560" style="display:block;width:100%;height:auto;border-radius:16px;" /></p>` : ''}
+    <p style="margin:0 0 16px;">A new article has just been published at <strong>${escapeHtml(settings.studioName)}</strong>.</p>
+    <p style="margin:0 0 8px;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:19px;font-weight:700;color:${BRAND.ink};">${escapeHtml(article.title)}</p>
+    <p style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:13.5px;line-height:1.65;color:${BRAND.muted};">${escapeHtml(article.excerpt)}${article.category ? ` &nbsp;·&nbsp; ${escapeHtml(article.category)}` : ''}</p>
+  `;
+
+  return {
+    html: wrapEmail({
+      preheader: `New article: ${article.title}`,
+      kicker: 'New on the blog',
+      heading: article.title,
+      bodyHtml: body,
+      ctaLabel: 'Read the article',
+      ctaHref: href,
+      settings,
+      footerNote: 'You are receiving this because you subscribed for updates. Reply to unsubscribe.',
+    }),
+    subject: `New article: ${article.title}`,
+    to: settings.officialEmail,
+    cc: [subscriberEmail],
+    from_name: settings.studioName,
+    reply_to: subscriberEmail,
   };
 }
